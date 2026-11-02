@@ -35,8 +35,15 @@ function loadImage(src) {
 // Recreate the selected wedding treatment as a print-safe canvas gradient.
 // CSS texture details remain visible in the editor while the main palette is
 // preserved in JPEG, PNG, and PDF exports.
-function paintSheetBackground(ctx, sheet, width, height) {
+async function paintSheetBackground(ctx, sheet, width, height) {
   const background = sheet?.background;
+  if (background?.image) {
+    const image = await loadImage(background.image);
+    if (image) {
+      ctx.drawImage(image, 0, 0, width, height);
+      return;
+    }
+  }
   const cssColors = background?.css?.match(/#[0-9a-f]{6}/gi) || [];
   const colors = [...new Set(cssColors)];
 
@@ -51,6 +58,22 @@ function paintSheetBackground(ctx, sheet, width, height) {
   }
 
   ctx.fillRect(0, 0, width, height);
+}
+
+function drawCoverImage(ctx, image, x, y, width, height, cropX = 50, cropY = 50, cropScale = 1) {
+  const frameRatio = width / height;
+  const imageRatio = image.width / image.height;
+  let cropWidth = image.width;
+  let cropHeight = image.height;
+
+  if (imageRatio > frameRatio) cropWidth = image.height * frameRatio;
+  else cropHeight = image.width / frameRatio;
+
+  cropWidth = Math.min(image.width, cropWidth / cropScale);
+  cropHeight = Math.min(image.height, cropHeight / cropScale);
+  const sourceX = (image.width - cropWidth) * (cropX / 100);
+  const sourceY = (image.height - cropHeight) * (cropY / 100);
+  ctx.drawImage(image, sourceX, sourceY, cropWidth, cropHeight, x, y, width, height);
 }
 
 export const ExportService = {
@@ -130,12 +153,22 @@ export const ExportService = {
     }
 
     // 1. Fill Base Background
-    paintSheetBackground(ctx, sheet, px.width, px.height);
+    await paintSheetBackground(ctx, sheet, px.width, px.height);
 
     // 2. Render Layers in Stacking Order
     const layers = sheet.layers || [];
     for (const layer of layers) {
-      if (layer.type === 'decoration') {
+      if (layer.type === 'template-mask') {
+        ctx.save();
+        ctx.fillStyle = layer.color || '#FCE9DC';
+        ctx.fillRect(
+          (layer.x / 100) * px.width,
+          (layer.y / 100) * px.height,
+          (layer.width / 100) * px.width,
+          (layer.height / 100) * px.height,
+        );
+        ctx.restore();
+      } else if (layer.type === 'decoration') {
         ctx.save();
         ctx.fillStyle = layer.color || '#D4AF62';
         const dx = (layer.x / 100) * px.width;
@@ -153,18 +186,71 @@ export const ExportService = {
         if (layer.previewUrl) {
           const img = await loadImage(layer.previewUrl);
           if (img) {
-            ctx.save();
-            ctx.globalAlpha = layer.opacity ?? 1;
+            // Render and erase on a photo-only surface first. Erasing directly
+            // on the spread would also remove the background/template below.
+            const photoCanvas = document.createElement('canvas');
+            photoCanvas.width = Math.max(1, Math.ceil(lw));
+            photoCanvas.height = Math.max(1, Math.ceil(lh));
+            const photoCtx = photoCanvas.getContext('2d');
+            if (!photoCtx) continue;
 
-            // Apply Brightness & Contrast Adjustments
             const brightness = layer.adjustments?.brightness || 100;
             const contrast = layer.adjustments?.contrast || 100;
-            if (ctx.filter !== undefined) {
-              ctx.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
+            if (photoCtx.filter !== undefined) {
+              photoCtx.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
+            }
+            drawCoverImage(photoCtx, img, 0, 0, lw, lh, layer.cropX ?? 50, layer.cropY ?? 50, layer.cropScale || 1);
+
+            if (layer.eraserStrokes?.length) {
+              photoCtx.globalCompositeOperation = 'destination-out';
+              photoCtx.filter = 'blur(0.6px)';
+              photoCtx.lineCap = 'round';
+              photoCtx.lineJoin = 'round';
+              layer.eraserStrokes.slice(1).forEach((stroke, index) => {
+                const previous = layer.eraserStrokes[index];
+                photoCtx.beginPath();
+                photoCtx.lineWidth = Math.max(1, ((previous.size + stroke.size) / 200) * Math.min(lw, lh));
+                photoCtx.moveTo((previous.x / 100) * lw, (previous.y / 100) * lh);
+                photoCtx.lineTo((stroke.x / 100) * lw, (stroke.y / 100) * lh);
+                photoCtx.stroke();
+              });
+              layer.eraserStrokes.forEach((stroke) => {
+                photoCtx.beginPath();
+                photoCtx.arc(
+                  (stroke.x / 100) * lw,
+                  (stroke.y / 100) * lh,
+                  Math.max(1, (stroke.size / 100) * Math.min(lw, lh) / 2),
+                  0,
+                  Math.PI * 2,
+                );
+                photoCtx.fill();
+              });
             }
 
-            // Draw photo clipped inside frame
-            ctx.drawImage(img, lx, ly, lw, lh);
+            ctx.save();
+            ctx.globalAlpha = layer.opacity ?? 1;
+            const centerX = lx + lw / 2;
+            const centerY = ly + lh / 2;
+            ctx.translate(centerX, centerY);
+            ctx.rotate(((layer.rotation || 0) * Math.PI) / 180);
+            const drawX = -lw / 2;
+            const drawY = -lh / 2;
+            if (layer.templateShape) {
+              ctx.beginPath();
+              ctx.moveTo(drawX, drawY);
+              ctx.lineTo(drawX + lw * 0.94, drawY);
+              ctx.lineTo(drawX + lw, drawY + lh * 0.18);
+              ctx.lineTo(drawX + lw * 0.96, drawY + lh * 0.42);
+              ctx.lineTo(drawX + lw, drawY + lh * 0.66);
+              ctx.lineTo(drawX + lw * 0.92, drawY + lh);
+              ctx.lineTo(drawX + lw * 0.07, drawY + lh);
+              ctx.lineTo(drawX, drawY + lh * 0.8);
+              ctx.lineTo(drawX + lw * 0.03, drawY + lh * 0.54);
+              ctx.lineTo(drawX, drawY + lh * 0.28);
+              ctx.closePath();
+              ctx.clip();
+            }
+            ctx.drawImage(photoCanvas, drawX, drawY, lw, lh);
             ctx.restore();
           }
         } else {
@@ -191,7 +277,12 @@ export const ExportService = {
 
         const tx = (layer.x / 100) * px.width;
         const ty = (layer.y / 100) * px.height;
-        ctx.fillText(layer.text || '', tx, ty);
+        const textWidth = ((layer.width || 42) / 100) * px.width;
+        const textHeight = fontSizePx * 1.3;
+        ctx.translate(tx + textWidth / 2, ty + textHeight / 2);
+        ctx.rotate(((layer.rotation || 0) * Math.PI) / 180);
+        ctx.textAlign = 'center';
+        ctx.fillText(layer.text || '', 0, -textHeight / 2);
         ctx.restore();
       }
     }

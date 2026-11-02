@@ -75,6 +75,8 @@ export default function Header() {
         {/* Mobile menu button */}
         <div className="flex items-center gap-3 md:hidden">
           <button
+            type="button"
+            aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
             className="p-2 rounded-xl bg-white border border-snavyo-lavender text-snavyo-purple hover:bg-snavyo-lavender transition-colors"
             onClick={() => setMenuOpen(!menuOpen)}
           >

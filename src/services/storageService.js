@@ -54,6 +54,65 @@ function saveLocalStorageProjects(projects) {
 }
 
 export const StorageService = {
+  async saveAsset(asset) {
+    if (!asset?.id || !asset?.blob) return false;
+    try {
+      const db = await openDatabase();
+      if (!db) return false;
+      return new Promise((resolve) => {
+        const tx = db.transaction(STORE_ASSETS, 'readwrite');
+        const req = tx.objectStore(STORE_ASSETS).put(asset);
+        req.onsuccess = () => resolve(true);
+        req.onerror = () => resolve(false);
+      });
+    } catch (err) {
+      console.error('Error saving asset:', err);
+      return false;
+    }
+  },
+
+  async getAsset(id) {
+    if (!id) return null;
+    try {
+      const db = await openDatabase();
+      if (!db) return null;
+      return new Promise((resolve) => {
+        const req = db.transaction(STORE_ASSETS, 'readonly').objectStore(STORE_ASSETS).get(id);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+    } catch (err) {
+      console.error('Error getting asset:', err);
+      return null;
+    }
+  },
+
+  async hydrateProjectAssets(project) {
+    if (!project) return project;
+    const hydrated = { ...project, photos: [...(project.photos || [])] };
+    const previewByPhotoId = new Map();
+
+    for (const photo of hydrated.photos) {
+      if (!photo.assetId) continue;
+      const asset = await this.getAsset(photo.assetId);
+      if (!asset?.blob) continue;
+      const previewUrl = URL.createObjectURL(asset.blob);
+      photo.previewUrl = previewUrl;
+      previewByPhotoId.set(photo.id, previewUrl);
+    }
+
+    hydrated.sheets = (hydrated.sheets || []).map((sheet) => ({
+      ...sheet,
+      layers: (sheet.layers || []).map((layer) =>
+        layer.photoId && previewByPhotoId.has(layer.photoId)
+          ? { ...layer, previewUrl: previewByPhotoId.get(layer.photoId) }
+          : layer
+      ),
+    }));
+
+    return hydrated;
+  },
+
   // Get all projects
   async getAllProjects() {
     try {
@@ -133,6 +192,8 @@ export const StorageService = {
           category: p.category,
           width: p.width,
           height: p.height,
+          assetId: p.assetId || null,
+          previewUrl: p.assetId ? null : p.previewUrl,
         })),
       };
       if (existingIdx >= 0) {

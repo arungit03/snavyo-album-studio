@@ -15,6 +15,7 @@ import {
   Sparkles,
   Move,
   Maximize2,
+  Eraser,
 } from 'lucide-react';
 
 export default function RightSidebar({
@@ -26,6 +27,11 @@ export default function RightSidebar({
   onDeleteLayer,
   onReorderLayer,
   onUpdateSheetBackground,
+  eraserMode = false,
+  eraserSize = 16,
+  onToggleEraser,
+  onEraserSizeChange,
+  onClearEraser,
 }) {
   const [tab, setTab] = useState('layers'); // 'layers' | 'properties'
 
@@ -34,7 +40,7 @@ export default function RightSidebar({
   const albumSize = project?.albumSize;
 
   return (
-    <aside className="w-72 bg-white border-l border-snavyo-lavender/80 flex flex-col h-full flex-shrink-0 select-none z-20">
+    <aside className="w-60 xl:w-72 bg-white border-l border-snavyo-lavender/80 flex flex-col h-full flex-shrink-0 select-none z-20">
       {/* Top Tabs */}
       <div className="flex items-center border-b border-snavyo-lavender bg-snavyo-background/60 p-1">
         <button
@@ -315,6 +321,39 @@ export default function RightSidebar({
                         </div>
                       </div>
                     </div>
+
+                    <div className="pt-2 border-t border-snavyo-lavender space-y-2">
+                      <span className="text-[11px] font-bold text-snavyo-text-main block">Crop & Fit</span>
+                      <div>
+                        <div className="flex justify-between text-[10px] text-snavyo-text-secondary"><span>Horizontal focus</span><span>{Math.round(selectedLayer.cropX ?? 50)}%</span></div>
+                        <input type="range" min="0" max="100" value={selectedLayer.cropX ?? 50} onChange={(e) => onUpdateLayer(selectedLayer.id, { cropX: Number(e.target.value) })} className="w-full accent-snavyo-purple h-1 bg-snavyo-lavender rounded-lg" aria-label="Photo horizontal crop position" />
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[10px] text-snavyo-text-secondary"><span>Vertical focus</span><span>{Math.round(selectedLayer.cropY ?? 50)}%</span></div>
+                        <input type="range" min="0" max="100" value={selectedLayer.cropY ?? 50} onChange={(e) => onUpdateLayer(selectedLayer.id, { cropY: Number(e.target.value) })} className="w-full accent-snavyo-purple h-1 bg-snavyo-lavender rounded-lg" aria-label="Photo vertical crop position" />
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[10px] text-snavyo-text-secondary"><span>Crop zoom</span><span>{(selectedLayer.cropScale || 1).toFixed(1)}×</span></div>
+                        <input type="range" min="1" max="2.5" step="0.05" value={selectedLayer.cropScale || 1} onChange={(e) => onUpdateLayer(selectedLayer.id, { cropScale: Number(e.target.value) })} className="w-full accent-snavyo-purple h-1 bg-snavyo-lavender rounded-lg" aria-label="Photo crop zoom" />
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-snavyo-lavender space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-snavyo-text-main flex items-center gap-1.5"><Eraser className="w-3.5 h-3.5 text-snavyo-purple" /> Image Eraser</span>
+                        <button type="button" onClick={onToggleEraser} aria-pressed={eraserMode} className={`rounded-lg px-2 py-1 text-[10px] font-bold transition-colors ${eraserMode ? 'bg-snavyo-purple text-white' : 'border border-snavyo-lavender text-snavyo-text-secondary hover:text-snavyo-purple'}`}>
+                          {eraserMode ? 'Active' : 'Use eraser'}
+                        </button>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[10px] text-snavyo-text-secondary"><span>Brush size</span><span>{eraserSize}px</span></div>
+                        <input type="range" min="4" max="40" value={eraserSize} onChange={(e) => onEraserSizeChange(Number(e.target.value))} className="w-full accent-snavyo-purple h-1.5 bg-snavyo-lavender rounded-lg" aria-label="Eraser brush size" />
+                      </div>
+                      {(selectedLayer.eraserStrokes?.length || 0) > 0 && (
+                        <button type="button" onClick={() => onClearEraser(selectedLayer.id)} className="w-full rounded-lg border border-snavyo-lavender py-1.5 text-[10px] font-bold text-snavyo-text-secondary hover:border-snavyo-purple hover:text-snavyo-purple">Clear erased areas</button>
+                      )}
+                      <p className="text-[10px] leading-snug text-snavyo-text-secondary">Paint directly over the selected photo. The album background remains untouched.</p>
+                    </div>
                   </div>
                 )}
 
@@ -350,6 +389,18 @@ export default function RightSidebar({
                         className="w-full p-1.5 rounded border border-snavyo-lavender bg-white font-mono text-center"
                       />
                     </div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-snavyo-text-secondary block mb-0.5">Rotation:</span>
+                    <input
+                      type="number"
+                      min="-180"
+                      max="180"
+                      value={Math.round(selectedLayer.rotation || 0)}
+                      onChange={(e) => onUpdateLayer(selectedLayer.id, { rotation: Number(e.target.value) })}
+                      className="w-full p-1.5 rounded border border-snavyo-lavender bg-white font-mono text-center"
+                      aria-label="Layer rotation in degrees"
+                    />
                   </div>
                 </div>
 

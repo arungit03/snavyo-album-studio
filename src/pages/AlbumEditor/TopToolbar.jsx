@@ -11,9 +11,9 @@ import {
   Columns,
   Grid,
   Check,
-  Sparkles,
+  Undo2,
+  Redo2,
 } from 'lucide-react';
-import { Button } from '@/components/common/Button';
 
 export default function TopToolbar({
   project,
@@ -31,12 +31,15 @@ export default function TopToolbar({
   isSaving,
   lastSavedTime,
   onExport,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
 }) {
-  const currentSheet = project?.sheets?.[activeSheetIndex];
   const totalSheets = project?.sheets?.length || 1;
 
   return (
-    <header className="h-14 flex-shrink-0 bg-white border-b border-snavyo-lavender/80 px-4 flex items-center justify-between shadow-xs z-30 select-none">
+    <header className="h-14 min-w-[980px] flex-shrink-0 overflow-x-auto bg-white border-b border-snavyo-lavender/80 px-4 flex items-center justify-between shadow-xs z-30 select-none">
       {/* Left: Branding & Back & Project Info */}
       <div className="flex items-center gap-3">
         <Link
@@ -176,6 +179,14 @@ export default function TopToolbar({
 
       {/* Right: Actions */}
       <div className="flex items-center gap-2">
+        <div className="hidden sm:flex items-center gap-0.5 rounded-lg border border-snavyo-lavender bg-snavyo-background p-0.5">
+          <button type="button" onClick={onUndo} disabled={!canUndo} aria-label="Undo" title="Undo (Ctrl+Z)" className="rounded-md p-1.5 text-snavyo-text-secondary transition-colors hover:bg-white hover:text-snavyo-purple disabled:cursor-not-allowed disabled:opacity-35">
+            <Undo2 className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" onClick={onRedo} disabled={!canRedo} aria-label="Redo" title="Redo (Ctrl+Shift+Z)" className="rounded-md p-1.5 text-snavyo-text-secondary transition-colors hover:bg-white hover:text-snavyo-purple disabled:cursor-not-allowed disabled:opacity-35">
+            <Redo2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
         <button
           type="button"
           onClick={onSave}

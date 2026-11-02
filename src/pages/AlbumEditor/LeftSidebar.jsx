@@ -12,7 +12,12 @@ import {
   CheckCircle2,
   FolderOpen,
   Filter,
+  Heart,
+  ImagePlus,
 } from 'lucide-react';
+import WeddingTemplateModal from './WeddingTemplateModal';
+import WeddingGalleryModal from './WeddingGalleryModal';
+import { WEDDING_TEMPLATES } from '@/utils/templateData';
 
 const TABS = [
   { id: 'photos', label: 'Photos', icon: Image },
@@ -29,14 +34,19 @@ export default function LeftSidebar({
   onAddText,
   onAddDecoration,
   onApplyBackground,
+  onApplyWeddingTemplate,
+  onApplyWeddingGalleryTemplate,
   onApplyLayout,
   onUploadPhotos,
 }) {
   const [activeTab, setActiveTab] = useState('photos');
   const [photoFilter, setPhotoFilter] = useState('all'); // all | unused | used
+  const [weddingTemplateOpen, setWeddingTemplateOpen] = useState(false);
+  const [weddingGalleryOpen, setWeddingGalleryOpen] = useState(false);
   const fileInputRef = useRef(null);
 
   const photos = project?.photos || [];
+  const isWeddingProject = project?.event?.id === 'wedding';
 
   // Determine which photos are currently used in the active sheet or whole project
   const usedPhotoIds = new Set();
@@ -62,7 +72,7 @@ export default function LeftSidebar({
   };
 
   return (
-    <aside className="w-72 bg-white border-r border-snavyo-lavender/80 flex flex-col h-full flex-shrink-0 select-none z-20">
+    <aside className="w-60 xl:w-72 bg-white border-r border-snavyo-lavender/80 flex flex-col h-full flex-shrink-0 select-none z-20">
       {/* Tab Navigation Icons */}
       <div className="flex items-center justify-around border-b border-snavyo-lavender bg-snavyo-background/60 p-1">
         {TABS.map((tab) => {
@@ -281,6 +291,30 @@ export default function LeftSidebar({
             </div>
 
             <div className="grid grid-cols-2 gap-2.5">
+              {isWeddingProject && (
+                <>
+                  <button type="button" onClick={() => setWeddingTemplateOpen(true)} className="group col-span-2 rounded-xl border border-[#d7b8a6] bg-[#fff4ec] p-2 text-left transition-all hover:border-[#8c5a4c] hover:shadow-sm">
+                    <div className="relative h-24 overflow-hidden rounded-lg border border-[#ead1c2] bg-[#f9e8dc]">
+                      <img src={WEDDING_TEMPLATES.classic.preview} alt="Wed-Day wedding template" className="h-full w-full object-cover" />
+                      <span className="absolute bottom-2 left-2 rounded-full bg-[#4b2b2a]/85 px-2 py-1 text-[9px] font-bold text-white">Personalise template</span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between px-1">
+                      <span className="text-[10px] font-bold text-[#4b2b2a]">{WEDDING_TEMPLATES.classic.label}</span>
+                      <Heart className="h-3.5 w-3.5 fill-[#8c5a4c] text-[#8c5a4c]" />
+                    </div>
+                  </button>
+                  <button type="button" onClick={() => setWeddingGalleryOpen(true)} className="group col-span-2 rounded-xl border border-[#c9c3bb] bg-[#f4f2ef] p-2 text-left transition-all hover:border-[#6d675f] hover:shadow-sm">
+                    <div className="relative h-24 overflow-hidden rounded-lg border border-[#d9d4ce] bg-[#e9e6e1]">
+                      <img src={WEDDING_TEMPLATES.gallery.preview} alt="Wedding gallery spread template" className="h-full w-full object-cover" />
+                      <span className="absolute bottom-2 left-2 rounded-full bg-[#37332f]/85 px-2 py-1 text-[9px] font-bold text-white">Auto-fit photo frames</span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between px-1">
+                      <span className="text-[10px] font-bold text-[#37332f]">{WEDDING_TEMPLATES.gallery.label}</span>
+                      <ImagePlus className="h-3.5 w-3.5 text-[#6d675f]" />
+                    </div>
+                  </button>
+                </>
+              )}
               {[
                 {
                   name: 'Petal Veil',
@@ -430,6 +464,17 @@ export default function LeftSidebar({
           </div>
         )}
       </div>
+
+      <WeddingTemplateModal
+        isOpen={weddingTemplateOpen}
+        onClose={() => setWeddingTemplateOpen(false)}
+        onApply={onApplyWeddingTemplate}
+      />
+      <WeddingGalleryModal
+        isOpen={weddingGalleryOpen}
+        onClose={() => setWeddingGalleryOpen(false)}
+        onApply={onApplyWeddingGalleryTemplate}
+      />
     </aside>
   );
 }

@@ -53,7 +53,9 @@ export default function Filmstrip({
                 className="h-11 w-full bg-white border border-snavyo-lavender/80 rounded-lg shadow-xs relative flex items-center justify-center overflow-hidden"
                 style={{
                   aspectRatio: `${ratio} / 1`,
-                  background: sheet.background?.css || sheet.background?.value || '#FFFFFF',
+                  background: sheet.background?.image
+                    ? `url(${sheet.background.image}) center / 100% 100% no-repeat`
+                    : sheet.background?.css || sheet.background?.value || '#FFFFFF',
                 }}
               >
                 {/* Center fold dotted line */}

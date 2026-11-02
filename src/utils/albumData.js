@@ -455,6 +455,8 @@ export function createDefaultSheet(sheetIndex, event) {
       value: eventBg,
       gradient: null,
       css: null,
+      image: null,
+      templateId: null,
       opacity: 1
     },
     layers: []

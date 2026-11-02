@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { StorageService } from '@/services/storageService';
 import { createDefaultSheet, EVENTS, ALBUM_SIZES, pixelsForSize, PPI } from '@/utils/albumData';
@@ -8,6 +8,7 @@ import CanvasWorkspace from './CanvasWorkspace';
 import RightSidebar from './RightSidebar';
 import Filmstrip from './Filmstrip';
 import ExportModal from './ExportModal';
+import { WEDDING_TEMPLATES, WEDDING_GALLERY_SLOTS } from '@/utils/templateData';
 
 export default function AlbumEditor() {
   const { projectId } = useParams();
@@ -24,6 +25,32 @@ export default function AlbumEditor() {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState(null);
   const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [eraserMode, setEraserMode] = useState(false);
+  const [eraserSize, setEraserSize] = useState(16);
+
+  const handleSelectLayer = useCallback((layerId) => {
+    setSelectedLayerId(layerId);
+    // Only exit eraser mode when deselecting (null) or switching to a different layer
+    setEraserMode((prev) => {
+      if (!prev) return false;          // wasn't erasing anyway
+      if (layerId === null) return false; // deselected → stop erasing
+      return prev;                       // same or new layer — keep eraser on
+    });
+  }, []);
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+  const hasLoadedRef = useRef(false);
+
+  const commitProject = useCallback((updater) => {
+    setProject((current) => {
+      if (!current) return current;
+      const next = typeof updater === 'function' ? updater(current) : updater;
+      if (next === current) return current;
+      setUndoStack((stack) => [...stack, current].slice(-60));
+      setRedoStack([]);
+      return next;
+    });
+  }, []);
 
   // Load project on mount or when projectId changes
   useEffect(() => {
@@ -34,7 +61,8 @@ export default function AlbumEditor() {
         const found = await StorageService.getProject(projectId);
         if (isMounted) {
           if (found) {
-            setProject(found);
+            const hydrated = await StorageService.hydrateProjectAssets(found);
+            setProject(hydrated);
             setActiveSheetIndex(found.activeSheetIndex || 0);
           } else {
             console.warn('Project not found, creating fallback project for id:', projectId);
@@ -59,6 +87,7 @@ export default function AlbumEditor() {
             await StorageService.saveProject(fallbackProject);
             setProject(fallbackProject);
           }
+          hasLoadedRef.current = true;
           setLoading(false);
         }
       }
@@ -69,19 +98,48 @@ export default function AlbumEditor() {
     };
   }, [projectId]);
 
-  // Save Project
-  const handleSave = useCallback(async () => {
-    if (!project) return;
+  const persistProject = useCallback(async (value = project) => {
+    if (!value) return;
     setIsSaving(true);
-    const updated = {
-      ...project,
-      activeSheetIndex,
-      updatedAt: new Date().toISOString(),
-    };
-    await StorageService.saveProject(updated);
+    await StorageService.saveProject({ ...value, activeSheetIndex });
     setIsSaving(false);
     setLastSavedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
   }, [project, activeSheetIndex]);
+
+  // Save Project
+  const handleSave = useCallback(async () => {
+    await persistProject();
+  }, [persistProject]);
+
+  useEffect(() => {
+    if (!project || !hasLoadedRef.current) return undefined;
+    const timer = window.setTimeout(() => persistProject(project), 900);
+    return () => window.clearTimeout(timer);
+  }, [project, activeSheetIndex, persistProject]);
+
+  const handleUndo = useCallback(() => {
+    setUndoStack((stack) => {
+      if (!stack.length) return stack;
+      const previous = stack[stack.length - 1];
+      setProject((current) => {
+        setRedoStack((redo) => [...redo, current].slice(-60));
+        return previous;
+      });
+      return stack.slice(0, -1);
+    });
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    setRedoStack((stack) => {
+      if (!stack.length) return stack;
+      const next = stack[stack.length - 1];
+      setProject((current) => {
+        setUndoStack((undo) => [...undo, current].slice(-60));
+        return next;
+      });
+      return stack.slice(0, -1);
+    });
+  }, []);
 
   // Keyboard shortcut Ctrl+S
   useEffect(() => {
@@ -90,36 +148,54 @@ export default function AlbumEditor() {
         e.preventDefault();
         handleSave();
       }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) handleRedo();
+        else handleUndo();
+      }
       if (e.key === 'Delete' && selectedLayerId) {
+        // Don't delete while user is typing in an input/textarea/contenteditable
+        const tag = document.activeElement?.tagName?.toUpperCase();
+        const isEditing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+          || document.activeElement?.isContentEditable;
+        if (isEditing) return;
         handleDeleteLayer(selectedLayerId);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleSave, selectedLayerId]);
+  }, [handleSave, handleRedo, handleUndo, selectedLayerId]);
 
   // Upload photos into project
-  const handleUploadPhotos = (files) => {
-    const newPhotos = files.map((file) => {
-      const url = URL.createObjectURL(file);
+  const handleUploadPhotos = async (files) => {
+    const newPhotos = await Promise.all(files.map(async (file) => {
+      const assetId = 'asset_' + Date.now() + '_' + Math.random().toString(36).substr(2, 7);
+      const stored = await StorageService.saveAsset({ id: assetId, blob: file, name: file.name, type: file.type, size: file.size });
+      const url = stored
+        ? URL.createObjectURL(file)
+        : await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(file);
+          });
       return {
         id: 'photo_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
         name: file.name,
         previewUrl: url,
-        originalFile: file,
+        assetId: stored ? assetId : null,
         sizeBytes: file.size,
         category: 'All',
         width: 1920,
         height: 1080,
       };
-    });
+    }));
 
-    setProject((prev) => {
+    commitProject((prev) => {
       const updated = {
         ...prev,
         photos: [...(prev?.photos || []), ...newPhotos],
       };
-      StorageService.saveProject(updated);
       return updated;
     });
   };
@@ -143,7 +219,7 @@ export default function AlbumEditor() {
       adjustments: { brightness: 100, contrast: 100 },
     };
 
-    setProject((prev) => {
+    commitProject((prev) => {
       const updatedSheets = [...prev.sheets];
       updatedSheets[activeSheetIndex] = {
         ...activeSheet,
@@ -173,7 +249,7 @@ export default function AlbumEditor() {
       opacity: 1,
     };
 
-    setProject((prev) => {
+    commitProject((prev) => {
       const updatedSheets = [...prev.sheets];
       updatedSheets[activeSheetIndex] = {
         ...activeSheet,
@@ -201,7 +277,7 @@ export default function AlbumEditor() {
       height: 4,
     };
 
-    setProject((prev) => {
+    commitProject((prev) => {
       const updatedSheets = [...prev.sheets];
       updatedSheets[activeSheetIndex] = {
         ...activeSheet,
@@ -214,7 +290,7 @@ export default function AlbumEditor() {
 
   // Apply a designed background treatment or a plain color to the active sheet
   const handleApplyBackground = (background) => {
-    setProject((prev) => {
+    commitProject((prev) => {
       const updatedSheets = [...prev.sheets];
       const currentBackground = updatedSheets[activeSheetIndex].background || {};
       const isDesignedBackground = typeof background === 'object';
@@ -225,10 +301,136 @@ export default function AlbumEditor() {
           type: isDesignedBackground ? 'design' : 'color',
           value: isDesignedBackground ? background.color : background,
           css: isDesignedBackground ? background.background : null,
+          image: null,
+          templateId: null,
         },
       };
       return { ...prev, sheets: updatedSheets };
     });
+  };
+
+  const handleApplyWeddingTemplate = (details) => {
+    const activeSheet = project?.sheets?.[activeSheetIndex];
+    if (!activeSheet) return;
+
+    const makeId = (suffix) => `wedding_template_${suffix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const formatDate = (value) => {
+      if (!value) return '';
+      const [year, month, day] = value.split('-');
+      return new Date(Number(year), Number(month) - 1, Number(day)).toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      });
+    };
+    const formatTime = (value) => {
+      if (!value) return '';
+      const [hours, minutes] = value.split(':');
+      const date = new Date(1970, 0, 1, Number(hours), Number(minutes));
+      return date.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+    };
+
+    const mask = (id, x, y, width, height) => ({
+      id: makeId(id),
+      type: 'template-mask',
+      name: 'Template text area',
+      x,
+      y,
+      width,
+      height,
+      color: '#FCE9DC',
+    });
+
+    const text = (id, value, x, y, fontSize, width = 42) => ({
+      id: makeId(id),
+      type: 'text',
+      name: value,
+      text: value,
+      fontFamily: "'Brush Script MT', 'Segoe Script', cursive",
+      fontSize,
+      color: '#5B382F',
+      fontWeight: 'bold',
+      x,
+      y,
+      width,
+      opacity: 1,
+    });
+
+    const templateLayers = [
+      mask('names-mask', 53, 30, 46, 27),
+      mask('message-mask', 53, 57, 45, 17),
+      mask('details-mask', 53, 76, 27, 22),
+      {
+        id: makeId('photo'),
+        type: 'photo',
+        name: 'Wedding template photo',
+        previewUrl: details.photoPreview,
+        x: 2,
+        y: 24,
+        width: 49,
+        height: 57,
+        templateShape: true,
+        opacity: 1,
+        adjustments: { brightness: 100, contrast: 100 },
+      },
+      text('names', details.coupleNames, 55, 34, 28),
+      text('date', `Date: ${formatDate(details.date)}`, 55, 77, 12, 30),
+      text('time', `Time: ${formatTime(details.time)}`, 55, 83, 12, 30),
+      text('location', `Place: ${details.location}`, 55, 89, 12, 42),
+    ];
+
+    commitProject((prev) => {
+      const updatedSheets = [...prev.sheets];
+      updatedSheets[activeSheetIndex] = {
+        ...updatedSheets[activeSheetIndex],
+        background: {
+          type: 'template',
+          value: '#FCE9DC',
+          css: null,
+          image: WEDDING_TEMPLATES.classic.background,
+          templateId: WEDDING_TEMPLATES.classic.id,
+        },
+        layers: templateLayers,
+      };
+      return { ...prev, sheets: updatedSheets };
+    });
+    setSelectedLayerId(null);
+    setEraserMode(false);
+  };
+
+  const handleApplyWeddingGalleryTemplate = ({ photos }) => {
+    const activeSheet = project?.sheets?.[activeSheetIndex];
+    if (!activeSheet) return;
+
+    const templateLayers = photos.map((photo, index) => {
+      const slot = WEDDING_GALLERY_SLOTS[index];
+      return {
+        id: `gallery_photo_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 6)}`,
+        type: 'photo',
+        name: `Gallery photo ${index + 1}`,
+        previewUrl: photo.previewUrl,
+        ...slot,
+        opacity: 1,
+        adjustments: { brightness: 100, contrast: 100 },
+      };
+    });
+
+    commitProject((prev) => {
+      const updatedSheets = [...prev.sheets];
+      updatedSheets[activeSheetIndex] = {
+        ...updatedSheets[activeSheetIndex],
+        background: {
+          type: 'template',
+          value: '#F2F0EC',
+          css: null,
+          image: WEDDING_TEMPLATES.gallery.background,
+          templateId: WEDDING_TEMPLATES.gallery.id,
+        },
+        layers: templateLayers,
+      };
+      return { ...prev, sheets: updatedSheets };
+    });
+    setSelectedLayerId(null);
   };
 
   // Apply smart layout composition (Grand Hero, Editorial, Cinematic)
@@ -298,7 +500,7 @@ export default function AlbumEditor() {
       ];
     }
 
-    setProject((prev) => {
+    commitProject((prev) => {
       const updatedSheets = [...prev.sheets];
       updatedSheets[activeSheetIndex] = {
         ...updatedSheets[activeSheetIndex],
@@ -310,7 +512,7 @@ export default function AlbumEditor() {
 
   // Update layer properties (x, y, width, height, adjustments, text, etc.)
   const handleUpdateLayer = (layerId, patch) => {
-    setProject((prev) => {
+    commitProject((prev) => {
       const activeSheet = prev.sheets[activeSheetIndex];
       const updatedLayers = activeSheet.layers.map((l) =>
         l.id === layerId ? { ...l, ...patch } : l
@@ -323,7 +525,7 @@ export default function AlbumEditor() {
 
   // Delete layer
   const handleDeleteLayer = (layerId) => {
-    setProject((prev) => {
+    commitProject((prev) => {
       const activeSheet = prev.sheets[activeSheetIndex];
       const updatedLayers = activeSheet.layers.filter((l) => l.id !== layerId);
       const updatedSheets = [...prev.sheets];
@@ -337,7 +539,7 @@ export default function AlbumEditor() {
 
   // Reorder layer
   const handleReorderLayer = (index, direction) => {
-    setProject((prev) => {
+    commitProject((prev) => {
       const activeSheet = prev.sheets[activeSheetIndex];
       const updatedLayers = [...activeSheet.layers];
       const targetIndex = direction === 'up' ? index + 1 : index - 1;
@@ -355,7 +557,7 @@ export default function AlbumEditor() {
 
   // Multi-sheet management
   const handleAddSheet = () => {
-    setProject((prev) => {
+    commitProject((prev) => {
       const newSheetNumber = prev.sheets.length + 1;
       const newSheet = createDefaultSheet(newSheetNumber, prev.event);
       return {
@@ -368,7 +570,7 @@ export default function AlbumEditor() {
   };
 
   const handleDuplicateSheet = (index) => {
-    setProject((prev) => {
+    commitProject((prev) => {
       const source = prev.sheets[index];
       const clone = {
         ...JSON.parse(JSON.stringify(source)),
@@ -392,7 +594,7 @@ export default function AlbumEditor() {
       alert('An album must have at least one sheet.');
       return;
     }
-    setProject((prev) => {
+    commitProject((prev) => {
       const newSheets = prev.sheets.filter((_, i) => i !== index);
       return {
         ...prev,
@@ -438,6 +640,10 @@ export default function AlbumEditor() {
         isSaving={isSaving}
         lastSavedTime={lastSavedTime}
         onExport={() => setExportModalOpen(true)}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        canUndo={undoStack.length > 0}
+        canRedo={redoStack.length > 0}
       />
 
       {/* Main 3-Column Studio Workspace */}
@@ -450,6 +656,8 @@ export default function AlbumEditor() {
           onAddText={handleAddText}
           onAddDecoration={handleAddDecoration}
           onApplyBackground={handleApplyBackground}
+          onApplyWeddingTemplate={handleApplyWeddingTemplate}
+          onApplyWeddingGalleryTemplate={handleApplyWeddingGalleryTemplate}
           onApplyLayout={handleApplyLayout}
           onUploadPhotos={handleUploadPhotos}
         />
@@ -464,9 +672,14 @@ export default function AlbumEditor() {
           showCenterSpine={showCenterSpine}
           showGrid={showGrid}
           selectedLayerId={selectedLayerId}
-          onSelectLayer={setSelectedLayerId}
+          onSelectLayer={handleSelectLayer}
           onUpdateLayer={handleUpdateLayer}
           onDeleteLayer={handleDeleteLayer}
+          eraserMode={eraserMode}
+          eraserSize={eraserSize}
+          onToggleEraser={() => setEraserMode((value) => !value)}
+          onEraserSizeChange={setEraserSize}
+          onClearEraser={(layerId) => handleUpdateLayer(layerId, { eraserStrokes: [] })}
         />
 
         {/* Right Inspector (Layers, Object & Document Properties) */}
@@ -474,11 +687,16 @@ export default function AlbumEditor() {
           project={project}
           activeSheet={activeSheet}
           selectedLayerId={selectedLayerId}
-          onSelectLayer={setSelectedLayerId}
+          onSelectLayer={handleSelectLayer}
           onUpdateLayer={handleUpdateLayer}
           onDeleteLayer={handleDeleteLayer}
           onReorderLayer={handleReorderLayer}
           onUpdateSheetBackground={handleApplyBackground}
+          eraserMode={eraserMode}
+          eraserSize={eraserSize}
+          onToggleEraser={() => setEraserMode((value) => !value)}
+          onEraserSizeChange={setEraserSize}
+          onClearEraser={(layerId) => handleUpdateLayer(layerId, { eraserStrokes: [] })}
         />
       </div>
 
