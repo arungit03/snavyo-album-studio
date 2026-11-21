@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Sparkles } from 'lucide-react';
 import { StepIndicator } from '@/components/common/StepIndicator';
 import { SectionCard } from '@/components/common/Card';
@@ -20,6 +20,7 @@ const STEPS = [
 
 export default function NewProject() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [step, setStep] = useState(1);
   const [event, setEvent] = useState(EVENTS[0]); // default to Wedding
   const [albumSize, setAlbumSize] = useState(ALBUM_SIZES.find((s) => s.id === '12x36')); // default to 12x36
@@ -85,6 +86,8 @@ export default function NewProject() {
         activeSheetIndex: 0,
         sheets: initialSheets,
         photos: [],
+        requestedDesignerTemplateId: searchParams.get('template') || null,
+        requestedClassicLayout: searchParams.get('layout') || null,
         settings: {
           ppi: albumSize.ppi || PPI,
           safetyMarginPx: 100,

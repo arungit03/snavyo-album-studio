@@ -10,6 +10,7 @@ import Filmstrip from './Filmstrip';
 import ExportModal from './ExportModal';
 import { WEDDING_TEMPLATES, WEDDING_GALLERY_SLOTS } from '@/utils/templateData';
 
+
 export default function AlbumEditor() {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -27,6 +28,11 @@ export default function AlbumEditor() {
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [eraserMode, setEraserMode] = useState(false);
   const [eraserSize, setEraserSize] = useState(16);
+  const [designerTemplates, setDesignerTemplates] = useState([]);
+
+  useEffect(() => {
+    fetch('/template-generated/manifest.json').then((response) => response.ok ? response.json() : []).then(setDesignerTemplates).catch(() => setDesignerTemplates([]));
+  }, []);
 
   const handleSelectLayer = useCallback((layerId) => {
     setSelectedLayerId(layerId);
@@ -179,6 +185,12 @@ export default function AlbumEditor() {
             reader.onerror = () => resolve('');
             reader.readAsDataURL(file);
           });
+      const dimensions = await new Promise((resolve) => {
+        const image = new Image();
+        image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+        image.onerror = () => resolve({ width: 1920, height: 1080 });
+        image.src = url;
+      });
       return {
         id: 'photo_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
         name: file.name,
@@ -186,8 +198,7 @@ export default function AlbumEditor() {
         assetId: stored ? assetId : null,
         sizeBytes: file.size,
         category: 'All',
-        width: 1920,
-        height: 1080,
+        ...dimensions,
       };
     }));
 
@@ -197,6 +208,69 @@ export default function AlbumEditor() {
         photos: [...(prev?.photos || []), ...newPhotos],
       };
       return updated;
+    });
+    return newPhotos;
+  };
+
+  const handleUploadToTemplateSlot = async (layerId, file) => {
+    const [photo] = await handleUploadPhotos([file]);
+    if (!photo) return;
+    const layer = project?.sheets?.[activeSheetIndex]?.layers?.find((item) => item.id === layerId);
+    if (!layer) return;
+
+    let isPortrait = false;
+    if (photo.height && photo.width) {
+      isPortrait = photo.height > photo.width;
+    } else {
+      const img = new window.Image();
+      img.src = photo.previewUrl;
+      await new Promise((resolve) => {
+        img.onload = () => {
+          isPortrait = img.naturalHeight > img.naturalWidth;
+          resolve();
+        };
+        img.onerror = resolve;
+      });
+    }
+
+    handleUpdateLayer(layerId, {
+      photoId: photo.id,
+      previewUrl: photo.previewUrl,
+      name: photo.name,
+      fitMode: 'cover',
+      cropX: 50,
+      cropY: isPortrait ? 38 : 50,
+      cropScale: 1,
+    });
+    commitProject((prev) => {
+      const sheets = [...prev.sheets];
+      const sheet = sheets[activeSheetIndex];
+      sheets[activeSheetIndex] = { ...sheet, slotPhotoMap: { ...(sheet.slotPhotoMap || {}), [layer.templateSlotId]: photo.id } };
+      return { ...prev, sheets };
+    });
+  };
+
+  const handleSelectPhotoForSlot = (layerId, photo) => {
+    if (!photo) return;
+    const layer = project?.sheets?.[activeSheetIndex]?.layers?.find((item) => item.id === layerId);
+    if (!layer) return;
+
+    const isPortrait = (photo.height || 0) > (photo.width || 0);
+
+    handleUpdateLayer(layerId, {
+      photoId: photo.id,
+      previewUrl: photo.previewUrl,
+      name: photo.name || 'Photo Frame',
+      fitMode: 'cover',
+      cropX: 50,
+      cropY: isPortrait ? 38 : 50,
+      cropScale: 1,
+    });
+    commitProject((prev) => {
+      const sheets = [...prev.sheets];
+      const sheet = sheets[activeSheetIndex];
+      sheets[activeSheetIndex] = { ...sheet, slotPhotoMap: { ...(sheet.slotPhotoMap || {}), [layer.templateSlotId]: photo.id } };
+      return { ...prev, sheets };
     });
   };
 
@@ -290,6 +364,18 @@ export default function AlbumEditor() {
 
   // Apply a designed background treatment or a plain color to the active sheet
   const handleApplyBackground = (background) => {
+    if (background && typeof background === 'object' && background.image && designerTemplates.length) {
+      const bgImg = String(background.image).toLowerCase();
+      const matched = designerTemplates.find((t) => {
+        const id = t.id.toLowerCase();
+        const baseName = id.replace(/^\d+-/, '');
+        return bgImg.includes(id) || bgImg.includes(baseName) || (t.imagePath && bgImg.includes(t.imagePath.split('/').pop().toLowerCase()));
+      });
+      if (matched) {
+        handleApplyDesignerTemplate(matched);
+        return;
+      }
+    }
     commitProject((prev) => {
       const updatedSheets = [...prev.sheets];
       const currentBackground = updatedSheets[activeSheetIndex].background || {};
@@ -298,10 +384,10 @@ export default function AlbumEditor() {
         ...updatedSheets[activeSheetIndex],
         background: {
           ...currentBackground,
-          type: isDesignedBackground ? 'design' : 'color',
+          type: isDesignedBackground ? (background.image ? 'image' : 'design') : 'color',
           value: isDesignedBackground ? background.color : background,
           css: isDesignedBackground ? background.background : null,
-          image: null,
+          image: isDesignedBackground ? background.image || null : null,
           templateId: null,
         },
       };
@@ -371,6 +457,7 @@ export default function AlbumEditor() {
         height: 57,
         templateShape: true,
         opacity: 1,
+        fitMode: 'cover',
         adjustments: { brightness: 100, contrast: 100 },
       },
       text('names', details.coupleNames, 55, 34, 28),
@@ -411,6 +498,7 @@ export default function AlbumEditor() {
         previewUrl: photo.previewUrl,
         ...slot,
         opacity: 1,
+        fitMode: 'contain',
         adjustments: { brightness: 100, contrast: 100 },
       };
     });
@@ -510,12 +598,118 @@ export default function AlbumEditor() {
     });
   };
 
+  const handleApplyDesignerTemplate = (template) => {
+    if (!template?.slots?.length || !project) return;
+    const bleedX = (2 / (project.albumSize?.pixels?.width || (project.albumSize?.spreadWidth || 36) * PPI)) * 100;
+    const bleedY = (2 / (project.albumSize?.pixels?.height || (project.albumSize?.height || 12) * PPI)) * 100;
+
+    commitProject((prev) => {
+      const updatedSheets = [...prev.sheets];
+      const sheet = updatedSheets[activeSheetIndex];
+      const existingSlotMap = sheet.slotPhotoMap || {};
+
+      // Build slot layers — leave slots empty so user can choose each photo via "Add image"
+      const photoLayers = template.slots.map((slot, index) => {
+        const existingPhotoId = existingSlotMap[slot.id];
+        const existingPhoto = existingPhotoId ? prev.photos?.find((p) => p.id === existingPhotoId) : null;
+        const portrait = existingPhoto && (existingPhoto.height || 0) > (existingPhoto.width || 0);
+
+        return {
+          id: `designer_${template.id}_${slot.id}_${Date.now()}_${index}`,
+          type: 'photo',
+          name: `${template.name} · Slot ${slot.number}`,
+          photoId: existingPhoto?.id || null,
+          previewUrl: existingPhoto?.previewUrl || null,
+          x: slot.x * 100 - bleedX,
+          y: slot.y * 100 - bleedY,
+          width: slot.w * 100 + 2 * bleedX,
+          height: slot.h * 100 + 2 * bleedY,
+          rotation: slot.rotation || 0,
+          opacity: 1,
+          fitMode: 'cover',
+          cropX: 50,
+          cropY: portrait ? 38 : 50,
+          cropScale: 1,
+          templateSlotId: slot.id,
+          templateOrientation: slot.orientation,
+        };
+      });
+
+      const overlayLayer = {
+        id: `designer_overlay_${template.id}`,
+        type: 'template-overlay',
+        name: `${template.name} overlay`,
+        src: template.overlayPath,
+        locked: true,
+      };
+
+      const userLayers = (sheet.layers || []).filter((layer) => layer.type !== 'photo' && layer.type !== 'template-overlay');
+
+      // Update ONLY the active sheet — never auto place photos in other/next sheets
+      updatedSheets[activeSheetIndex] = {
+        ...sheet,
+        designerTemplateId: template.id,
+        background: {
+          ...(sheet.background || {}),
+          type: 'image',
+          image: template.imagePath,
+        },
+        slotPhotoMap: existingSlotMap,
+        layers: [...photoLayers, overlayLayer, ...userLayers],
+      };
+
+      return {
+        ...prev,
+        requestedDesignerTemplateId: null,
+        requestedClassicLayout: null,
+        sheets: updatedSheets,
+      };
+    });
+    setSelectedLayerId(null);
+  };
+
+  // Auto-instantiate template slots if active sheet has a template background or designerTemplateId but no slot layers
+  useEffect(() => {
+    if (!project || !designerTemplates.length) return;
+    const currentSheet = project.sheets?.[activeSheetIndex];
+    if (!currentSheet) return;
+    const hasPhotoLayers = currentSheet.layers?.some((l) => l.type === 'photo');
+    if (!hasPhotoLayers) {
+      let matched = null;
+      if (currentSheet.designerTemplateId) {
+        matched = designerTemplates.find((t) => t.id === currentSheet.designerTemplateId);
+      }
+      if (!matched && currentSheet.background?.image) {
+        const bgImg = String(currentSheet.background.image).toLowerCase();
+        matched = designerTemplates.find((t) => {
+          const id = t.id.toLowerCase();
+          const baseName = id.replace(/^\d+-/, '');
+          return bgImg.includes(id) || bgImg.includes(baseName) || (t.imagePath && bgImg.includes(t.imagePath.split('/').pop().toLowerCase()));
+        });
+      }
+      if (matched) {
+        handleApplyDesignerTemplate(matched);
+      }
+    }
+  }, [project, designerTemplates, activeSheetIndex]);
+
+  useEffect(() => {
+    if (!project || !designerTemplates.length) return;
+    const requested = project.requestedDesignerTemplateId && designerTemplates.find((item) => item.id === project.requestedDesignerTemplateId);
+    if (requested) handleApplyDesignerTemplate(requested);
+    else if (project.requestedClassicLayout) {
+      const layout = project.requestedClassicLayout;
+      commitProject((prev) => ({ ...prev, requestedClassicLayout: null }));
+      handleApplyLayout(layout);
+    }
+  }, [project, designerTemplates]);
+
   // Update layer properties (x, y, width, height, adjustments, text, etc.)
   const handleUpdateLayer = (layerId, patch) => {
     commitProject((prev) => {
       const activeSheet = prev.sheets[activeSheetIndex];
       const updatedLayers = activeSheet.layers.map((l) =>
-        l.id === layerId ? { ...l, ...patch } : l
+        l.id === layerId && !l.locked ? { ...l, ...patch } : l
       );
       const updatedSheets = [...prev.sheets];
       updatedSheets[activeSheetIndex] = { ...activeSheet, layers: updatedLayers };
@@ -525,9 +719,10 @@ export default function AlbumEditor() {
 
   // Delete layer
   const handleDeleteLayer = (layerId) => {
+    if (project?.sheets?.[activeSheetIndex]?.layers?.some((layer) => layer.id === layerId && layer.templateSlotId)) return;
     commitProject((prev) => {
       const activeSheet = prev.sheets[activeSheetIndex];
-      const updatedLayers = activeSheet.layers.filter((l) => l.id !== layerId);
+      const updatedLayers = activeSheet.layers.filter((l) => l.id !== layerId || l.locked);
       const updatedSheets = [...prev.sheets];
       updatedSheets[activeSheetIndex] = { ...activeSheet, layers: updatedLayers };
       return { ...prev, sheets: updatedSheets };
@@ -659,6 +854,8 @@ export default function AlbumEditor() {
           onApplyWeddingTemplate={handleApplyWeddingTemplate}
           onApplyWeddingGalleryTemplate={handleApplyWeddingGalleryTemplate}
           onApplyLayout={handleApplyLayout}
+          designerTemplates={designerTemplates}
+          onApplyDesignerTemplate={handleApplyDesignerTemplate}
           onUploadPhotos={handleUploadPhotos}
         />
 
@@ -675,6 +872,8 @@ export default function AlbumEditor() {
           onSelectLayer={handleSelectLayer}
           onUpdateLayer={handleUpdateLayer}
           onDeleteLayer={handleDeleteLayer}
+          onUploadToTemplateSlot={handleUploadToTemplateSlot}
+          onSelectPhotoForSlot={handleSelectPhotoForSlot}
           eraserMode={eraserMode}
           eraserSize={eraserSize}
           onToggleEraser={() => setEraserMode((value) => !value)}

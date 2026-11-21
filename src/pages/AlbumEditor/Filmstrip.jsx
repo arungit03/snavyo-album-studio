@@ -42,7 +42,7 @@ export default function Filmstrip({
             <div
               key={sheet.id || index}
               onClick={() => onSelectSheet(index)}
-              className={`w-40 flex-shrink-0 flex flex-col gap-1.5 p-1.5 rounded-xl border transition-all cursor-pointer group relative ${
+              className={`w-44 flex-shrink-0 flex flex-col gap-1.5 p-1.5 rounded-xl border transition-all cursor-pointer group relative ${
                 isActive
                   ? 'bg-snavyo-lavender/70 border-snavyo-purple shadow-[0_4px_12px_rgba(117,80,184,0.16)]'
                   : 'bg-white/70 border-snavyo-lavender/70 hover:border-snavyo-purple/40 hover:bg-white hover:shadow-sm'
@@ -50,7 +50,7 @@ export default function Filmstrip({
             >
               {/* Miniature Spread Canvas Preview */}
               <div
-                className="h-11 w-full bg-white border border-snavyo-lavender/80 rounded-lg shadow-xs relative flex items-center justify-center overflow-hidden"
+                className="h-12 w-full bg-white border border-snavyo-lavender/80 rounded-lg shadow-xs relative flex items-center justify-center overflow-hidden"
                 style={{
                   aspectRatio: `${ratio} / 1`,
                   background: sheet.background?.image

@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
-import { Trash2, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { Trash2, Image as ImageIcon, ImagePlus, Sparkles } from 'lucide-react';
 import { calculateSafetyGuides } from '../../utils/albumData';
 
 function createEraserMask(strokes = []) {
@@ -28,6 +28,8 @@ export default function CanvasWorkspace({
   onSelectLayer,
   onUpdateLayer,
   onDeleteLayer,
+  onUploadToTemplateSlot,
+  onSelectPhotoForSlot,
   eraserMode = false,
   eraserSize = 16,
   onToggleEraser,
@@ -152,6 +154,8 @@ export default function CanvasWorkspace({
       origWidth: layer.width || 30,
       origHeight: layer.height || 30,
       origRotation: layer.rotation || 0,
+      origCropX: layer.cropX ?? 50,
+      origCropY: layer.cropY ?? 50,
       startAngle,
       centerX,
       centerY,
@@ -206,6 +210,11 @@ export default function CanvasWorkspace({
       } else if (current.mode === 'rotate') {
         const angle = Math.atan2(e.clientY - current.centerY, e.clientX - current.centerX) * (180 / Math.PI);
         onUpdateLayer(selectedLayerId, { rotation: Math.round(current.origRotation + angle - current.startAngle) });
+      } else if (current.mode === 'crop') {
+        onUpdateLayer(selectedLayerId, {
+          cropX: Math.max(0, Math.min(100, current.origCropX - deltaX * 2)),
+          cropY: Math.max(0, Math.min(100, current.origCropY - deltaY * 2)),
+        });
       } else {
         onUpdateLayer(selectedLayerId, {
           x: Math.max(0, Math.min(100 - current.origWidth, current.origX + deltaX)),
@@ -399,12 +408,16 @@ export default function CanvasWorkspace({
             ? interaction.strokes
             : layer.eraserStrokes;
 
+          if (layer.type === 'template-overlay') {
+            return <img key={layer.id} src={layer.src} alt="" aria-hidden="true" draggable="false" className="absolute inset-0 w-full h-full pointer-events-none select-none" style={{ zIndex: layerIndex + 1 }} />;
+          }
+
           if (layer.type === 'photo') {
             return (
               <div
                 key={layer.id}
                 data-layer-id={layer.id}
-                onMouseDown={(e) => handleMouseDown(e, layer)}
+                onMouseDown={(e) => handleMouseDown(e, layer, layer.templateSlotId ? 'crop' : 'move')}
                 onMouseMove={(e) => handleEraserHover(e, layer)}
                 onMouseLeave={() => setBrushCursor(null)}
                 onClick={(e) => {
@@ -416,6 +429,17 @@ export default function CanvasWorkspace({
                     ? 'ring-2 ring-snavyo-purple ring-offset-2 shadow-luxury'
                     : 'hover:ring-1 hover:ring-snavyo-purple/50'
                 }`}
+                draggable={Boolean(layer.templateSlotId)}
+                onDragStart={(event) => { if (layer.templateSlotId) event.dataTransfer.setData('text/snavyo-slot', layer.id); }}
+                onDragOver={(event) => { if (layer.templateSlotId) event.preventDefault(); }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const sourceId = event.dataTransfer.getData('text/snavyo-slot');
+                  const source = activeSheet.layers.find((item) => item.id === sourceId);
+                  if (!source || source.id === layer.id) return;
+                  onUpdateLayer(source.id, { photoId: layer.photoId, previewUrl: layer.previewUrl, cropX: layer.cropX ?? 50, cropY: layer.cropY ?? 50, cropScale: layer.cropScale || 1 });
+                  onUpdateLayer(layer.id, { photoId: source.photoId, previewUrl: source.previewUrl, cropX: source.cropX ?? 50, cropY: source.cropY ?? 50, cropScale: source.cropScale || 1 });
+                }}
                 style={{
                   left: `${layer.x}%`,
                   top: `${layer.y}%`,
@@ -435,8 +459,9 @@ export default function CanvasWorkspace({
                   <img
                     src={layer.previewUrl}
                     alt={layer.name || 'Photo Frame'}
-                    className="w-full h-full object-cover rounded-sm shadow-sm"
+                    className={`w-full h-full rounded-sm shadow-sm ${layer.fitMode === 'contain' ? 'object-contain' : 'object-cover'}`}
                     style={{
+                      backgroundColor: layer.fitMode === 'contain' ? (layer.fitBackground || '#ffffff') : undefined,
                       opacity: layer.opacity ?? 1,
                       filter: `brightness(${layer.adjustments?.brightness || 100}%) contrast(${layer.adjustments?.contrast || 100}%)`,
                       objectPosition: `${layer.cropX ?? 50}% ${layer.cropY ?? 50}%`,
@@ -457,10 +482,99 @@ export default function CanvasWorkspace({
                     }}
                   />
                 ) : (
-                  <div className="w-full h-full bg-snavyo-lavender/40 border-2 border-dashed border-snavyo-purple/40 rounded-sm flex flex-col items-center justify-center p-2 text-center text-snavyo-purple">
-                    <ImageIcon className="w-5 h-5 mb-1 opacity-70" />
-                    <span className="text-[9px] font-bold">Empty Frame</span>
-                    <span className="text-[7px] opacity-70">Insert Photo</span>
+                  layer.templateSlotId ? (
+                    <div className="relative flex h-full w-full flex-col items-center justify-center gap-2 bg-[#08080c]/95 p-3 text-center text-white border border-white/10 hover:border-snavyo-gold/70 rounded transition-all">
+                      {/* Orientation Recommendation Badge */}
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-[10px] font-semibold text-amber-200 shadow-sm">
+                        {layer.templateOrientation === 'landscape' ? (
+                          <>
+                            <span className="inline-block w-3.5 h-2.5 border border-amber-300 rounded-[1px] bg-amber-400/30" />
+                            <span>Recommended: Horizontal image for best fit</span>
+                          </>
+                        ) : layer.templateOrientation === 'portrait' ? (
+                          <>
+                            <span className="inline-block w-2.5 h-3.5 border border-amber-300 rounded-[1px] bg-amber-400/30" />
+                            <span>Recommended: Vertical image for best fit</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="inline-block w-3 h-3 border border-amber-300 rounded-[1px] bg-amber-400/30" />
+                            <span>Recommended: Square image for best fit</span>
+                          </>
+                        )}
+                      </div>
+
+                      {/* Add Image Button */}
+                      <label
+                        className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-gradient-to-r from-snavyo-purple to-purple-700 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-purple-950/40 hover:from-purple-600 hover:to-snavyo-purple hover:scale-105 active:scale-95 transition-all"
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <ImagePlus className="h-4 w-4" /> Add image
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="sr-only"
+                          aria-label={`Add ${layer.templateOrientation || 'photo'} image to slot ${layer.templateSlotId}`}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file) onUploadToTemplateSlot?.(layer.id, file);
+                            event.target.value = '';
+                          }}
+                        />
+                      </label>
+
+                      {/* Pick from already uploaded project photos */}
+                      {project?.photos?.length > 0 && (
+                        <div
+                          className="mt-1 flex flex-wrap items-center justify-center gap-1 max-w-[90%]"
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <span className="text-[9px] text-white/50 block w-full">or choose uploaded photo:</span>
+                          {project.photos.slice(0, 5).map((p) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => onSelectPhotoForSlot?.(layer.id, p)}
+                              className="h-7 w-7 rounded overflow-hidden border border-white/25 hover:border-snavyo-gold hover:scale-110 transition-transform"
+                              title={`Place ${p.name}`}
+                            >
+                              <img src={p.previewUrl} alt="" className="w-full h-full object-cover" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="w-full h-full bg-snavyo-lavender/40 border-2 border-dashed border-snavyo-purple/40 rounded-sm flex flex-col items-center justify-center p-2 text-center text-snavyo-purple">
+                      <ImageIcon className="w-5 h-5 mb-1 opacity-70" />
+                      <span className="text-[9px] font-bold">Empty Frame</span>
+                      <span className="text-[7px] opacity-70">Insert Photo</span>
+                    </div>
+                  )
+                )}
+
+                {/* Replace Image Hover Action for filled template slots */}
+                {layer.templateSlotId && layer.previewUrl && (
+                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-30 flex items-center gap-1 bg-black/80 backdrop-blur-sm rounded-lg p-1 border border-white/20 shadow-md">
+                    <label
+                      className="inline-flex cursor-pointer items-center gap-1 rounded px-2.5 py-1 text-[10px] font-bold text-white bg-snavyo-purple hover:bg-purple-600 transition-colors cursor-pointer shadow"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ImagePlus className="w-3 h-3" /> Replace
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) onUploadToTemplateSlot?.(layer.id, file);
+                          event.target.value = '';
+                        }}
+                      />
+                    </label>
                   </div>
                 )}
 
@@ -478,7 +592,7 @@ export default function CanvasWorkspace({
                     <span className="text-[9px] font-bold text-snavyo-purple">
                       {layer.name || 'Photo'}
                     </span>
-                    <button
+                    {!layer.templateSlotId && <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -488,10 +602,10 @@ export default function CanvasWorkspace({
                       title="Delete Frame"
                     >
                       <Trash2 className="w-3 h-3" />
-                    </button>
+                    </button>}
                     </div>
-                    <div onMouseDown={(e) => handleMouseDown(e, layer, 'rotate')} aria-label="Rotate layer" role="button" className="absolute -top-3 left-1/2 h-3 w-3 -translate-x-1/2 cursor-crosshair rounded-full border-2 border-white bg-snavyo-purple shadow" title="Rotate layer" />
-                    <div onMouseDown={(e) => handleMouseDown(e, layer, 'resize')} aria-label="Resize layer" role="button" className="absolute -bottom-1 -right-1 h-3 w-3 cursor-se-resize rounded-sm border-2 border-white bg-snavyo-purple shadow" title="Resize layer" />
+                    {!layer.templateSlotId && <><div onMouseDown={(e) => handleMouseDown(e, layer, 'rotate')} aria-label="Rotate layer" role="button" className="absolute -top-3 left-1/2 h-3 w-3 -translate-x-1/2 cursor-crosshair rounded-full border-2 border-white bg-snavyo-purple shadow" title="Rotate layer" />
+                    <div onMouseDown={(e) => handleMouseDown(e, layer, 'resize')} aria-label="Resize layer" role="button" className="absolute -bottom-1 -right-1 h-3 w-3 cursor-se-resize rounded-sm border-2 border-white bg-snavyo-purple shadow" title="Resize layer" /></>}
                   </>
                 )}
               </div>

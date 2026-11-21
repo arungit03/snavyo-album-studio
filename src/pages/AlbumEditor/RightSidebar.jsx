@@ -92,8 +92,8 @@ export default function RightSidebar({
                   return (
                     <div
                       key={layer.id}
-                      onClick={() => onSelectLayer(layer.id)}
-                      className={`flex items-center gap-2 p-2 rounded-xl border transition-all cursor-pointer ${
+                      onClick={() => { if (!layer.locked) onSelectLayer(layer.id); }}
+                      className={`flex items-center gap-2 p-2 rounded-xl border transition-all ${layer.locked ? 'cursor-default opacity-75' : 'cursor-pointer'} ${
                         isSelected
                           ? 'bg-snavyo-lavender/60 border-snavyo-purple shadow-xs'
                           : 'bg-white border-snavyo-lavender/60 hover:border-snavyo-purple/40'
@@ -113,7 +113,7 @@ export default function RightSidebar({
                       </div>
 
                       {/* Reorder and Delete Controls */}
-                      <div className="flex items-center gap-0.5">
+                      {!layer.locked && !layer.templateSlotId && <div className="flex items-center gap-0.5">
                         <button
                           type="button"
                           onClick={(e) => {
@@ -149,7 +149,7 @@ export default function RightSidebar({
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
-                      </div>
+                      </div>}
                     </div>
                   );
                 })}
@@ -324,6 +324,25 @@ export default function RightSidebar({
 
                     <div className="pt-2 border-t border-snavyo-lavender space-y-2">
                       <span className="text-[11px] font-bold text-snavyo-text-main block">Crop & Fit</span>
+                      <div className={`grid ${selectedLayer.templateSlotId ? 'grid-cols-1' : 'grid-cols-2'} gap-1 rounded-lg bg-snavyo-background p-1 border border-snavyo-lavender`}>
+                        <button
+                          type="button"
+                          onClick={() => onUpdateLayer(selectedLayer.id, { fitMode: 'cover' })}
+                          className={`rounded-md py-1.5 text-[10px] font-bold transition-colors ${selectedLayer.fitMode !== 'contain' ? 'bg-white text-snavyo-purple shadow-sm' : 'text-snavyo-text-secondary hover:text-snavyo-purple'}`}
+                        >
+                          Fill frame
+                        </button>
+                        {!selectedLayer.templateSlotId && <button
+                          type="button"
+                          onClick={() => onUpdateLayer(selectedLayer.id, { fitMode: 'contain', cropScale: 1 })}
+                          className={`rounded-md py-1.5 text-[10px] font-bold transition-colors ${selectedLayer.fitMode === 'contain' ? 'bg-white text-snavyo-purple shadow-sm' : 'text-snavyo-text-secondary hover:text-snavyo-purple'}`}
+                        >
+                          Full image
+                        </button>}
+                      </div>
+                      <p className="text-[10px] leading-snug text-snavyo-text-secondary">
+                        Full image preserves the complete photo with a clean frame background. Fill frame crops to the template shape.
+                      </p>
                       <div>
                         <div className="flex justify-between text-[10px] text-snavyo-text-secondary"><span>Horizontal focus</span><span>{Math.round(selectedLayer.cropX ?? 50)}%</span></div>
                         <input type="range" min="0" max="100" value={selectedLayer.cropX ?? 50} onChange={(e) => onUpdateLayer(selectedLayer.id, { cropX: Number(e.target.value) })} className="w-full accent-snavyo-purple h-1 bg-snavyo-lavender rounded-lg" aria-label="Photo horizontal crop position" />

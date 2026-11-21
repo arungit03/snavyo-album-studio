@@ -76,6 +76,13 @@ function drawCoverImage(ctx, image, x, y, width, height, cropX = 50, cropY = 50,
   ctx.drawImage(image, sourceX, sourceY, cropWidth, cropHeight, x, y, width, height);
 }
 
+function drawContainImage(ctx, image, x, y, width, height, cropScale = 1) {
+  const scale = Math.min(width / image.width, height / image.height) * cropScale;
+  const drawWidth = image.width * scale;
+  const drawHeight = image.height * scale;
+  ctx.drawImage(image, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight);
+}
+
 export const ExportService = {
   // Preflight Print Lab Inspector
   runPreflightCheck(project, sheetIndex = null) {
@@ -98,6 +105,7 @@ export const ExportService = {
       }
 
       layers.forEach((layer) => {
+        if (layer.type === 'template-overlay') return;
         if (layer.type === 'photo' && !layer.previewUrl) {
           warnings.push({
             type: 'warning',
@@ -115,13 +123,35 @@ export const ExportService = {
           });
         }
 
-        // Check safety margin boundaries (outer 1% to 2%)
-        if (layerLeft < 1 || layer.y < 1 || layerRight > 99 || (layer.y + (layer.height || 0)) > 99) {
+        // Check the 100 px trim margin scaled to this spread's true print pixels.
+        const safetyXPct = (100 / ((albumSize.spreadWidth || 36) * (albumSize.ppi || PPI))) * 100;
+        const safetyYPct = (100 / ((albumSize.height || 12) * (albumSize.ppi || PPI))) * 100;
+        if (layerLeft < safetyXPct || layer.y < safetyYPct || layerRight > 100 - safetyXPct || (layer.y + (layer.height || 0)) > 100 - safetyYPct) {
           warnings.push({
             type: 'caution',
             message: `Sheet ${sheetNum}: "${layer.name || layer.type}" extends into the outer 100 px safety trim margin.`,
           });
         }
+
+        if (layer.type === 'photo' && layer.templateSlotId && layer.previewUrl) {
+          const photo = (project.photos || []).find((item) => item.id === layer.photoId) || {};
+          const photoWidth = photo.width || 1920, photoHeight = photo.height || 1080;
+          const slotRatio = (layer.width || 1) / (layer.height || 1) * (albumSize.spreadWidth || 36) / (albumSize.height || 12);
+          let cropWidth = photoWidth, cropHeight = photoHeight;
+          if (photoWidth / photoHeight > slotRatio) cropWidth = photoHeight * slotRatio;
+          else cropHeight = photoWidth / slotRatio;
+          const zoom = Math.max(1, layer.cropScale || 1);
+          const ppi = Math.min(cropWidth / zoom / ((albumSize.spreadWidth || 36) * layer.width / 100), cropHeight / zoom / ((albumSize.height || 12) * layer.height / 100));
+          if (ppi < 150) warnings.push({ type: 'caution', message: `Sheet ${sheetNum}: Slot ${layer.templateSlotId} photo resolution is approximately ${Math.round(ppi)} PPI (recommended minimum 150 PPI).` });
+        }
+      });
+
+      const slotLayers = layers.filter((layer) => layer.type === 'photo' && layer.templateSlotId);
+      const spreadPxWidth = (albumSize.pixels?.width || (albumSize.spreadWidth || 36) * PPI);
+      const clearancePct = (200 / spreadPxWidth) * 100;
+      slotLayers.forEach((layer) => {
+        const left = layer.x || 0, right = left + (layer.width || 0);
+        if (left < 50 + clearancePct / 2 && right > 50 - clearancePct / 2) warnings.push({ type: 'caution', message: `Sheet ${sheetNum}: Slot ${layer.templateSlotId} enters the 200 px center fold clearance.` });
       });
     });
 
@@ -158,7 +188,16 @@ export const ExportService = {
     // 2. Render Layers in Stacking Order
     const layers = sheet.layers || [];
     for (const layer of layers) {
-      if (layer.type === 'template-mask') {
+      if (layer.type === 'template-overlay') {
+        const overlay = await loadImage(layer.src);
+        if (overlay) {
+          ctx.save();
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(overlay, 0, 0, px.width, px.height);
+          ctx.restore();
+        }
+      } else if (layer.type === 'template-mask') {
         ctx.save();
         ctx.fillStyle = layer.color || '#FCE9DC';
         ctx.fillRect(
@@ -199,7 +238,13 @@ export const ExportService = {
             if (photoCtx.filter !== undefined) {
               photoCtx.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
             }
-            drawCoverImage(photoCtx, img, 0, 0, lw, lh, layer.cropX ?? 50, layer.cropY ?? 50, layer.cropScale || 1);
+            if (layer.fitMode === 'contain') {
+              photoCtx.fillStyle = layer.fitBackground || '#FFFFFF';
+              photoCtx.fillRect(0, 0, lw, lh);
+              drawContainImage(photoCtx, img, 0, 0, lw, lh, layer.cropScale || 1);
+            } else {
+              drawCoverImage(photoCtx, img, 0, 0, lw, lh, layer.cropX ?? 50, layer.cropY ?? 50, layer.cropScale || 1);
+            }
 
             if (layer.eraserStrokes?.length) {
               photoCtx.globalCompositeOperation = 'destination-out';
@@ -344,7 +389,7 @@ export const ExportService = {
   },
 
   // Export Complete Multi-Page Album PDF
-  async exportCompleteAlbumPDF(project, filename, targetPpi = 150, onProgress = null) {
+  async exportCompleteAlbumPDF(project, filename, targetPpi = PPI, onProgress = null) {
     const albumSize = project?.albumSize || { spreadWidth: 36, height: 12 };
     const spreadW = albumSize.spreadWidth || 36;
     const spreadH = albumSize.height || 12;

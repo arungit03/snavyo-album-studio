@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if the user is signed in
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if the user owns this document
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Users can only read/write their own profile
+    match /users/{userId} {
+      allow read, update, delete: if isSignedIn() && isOwner(userId);
+      allow create: if isSignedIn(); // anyone can create their own profile on signup
+
+      // Cart sub-collection: only the user can access their cart
+      match /cart/{itemId} {
+        allow read, write: if isSignedIn() && isOwner(userId);
+      }
+
+      // Orders sub-collection: only the user can see their orders
+      match /orders/{orderId} {
+        allow read: if isSignedIn() && isOwner(userId);
+        // Orders are created server-side after payment; client cannot write directly
+        allow write: if false;
+      }
+
+      // Drafts sub-collection: only the user can access their drafts
+      match /drafts/{draftId} {
+        allow read, write: if isSignedIn() && isOwner(userId);
+      }
+    }
+
+    // Public read for theme templates, but only admins can write
+    match /themes/{themeId} {
+      allow read: if true;
+      allow write: if isSignedIn() && request.auth.token.admin == true;
+    }
+
+    // Orders top-level collection: created by server after Razorpay verification
+    // Clients can read their own orders via a query on userId
+    match /orders/{orderId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if false; // server-side only
+      allow update: if false; // server-side only
+      allow delete: if false;
+    }
+  }
+}

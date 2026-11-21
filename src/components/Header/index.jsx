@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { Camera, Menu, X, Plus, Sparkles, FolderOpen, Layout } from 'lucide-react';
+import { Menu, X, Plus, MessageCircle, Phone } from 'lucide-react';
 import { Button } from '../common/Button';
+import BrandMark from '../common/BrandMark';
+import { CONFIG, WHATSAPP_URL, PHONE_URL } from '@/constants/config';
 
 const NAV_LINKS = [
   { name: 'Home', to: '/' },
@@ -29,9 +31,7 @@ export default function Header() {
           className="flex items-center gap-3 group"
           onClick={() => setMenuOpen(false)}
         >
-          <div className="w-10 h-10 rounded-full bg-snavyo-purple flex items-center justify-center shadow-lg shadow-purple/30 group-hover:scale-105 transition-transform">
-            <Camera className="w-5 h-5 text-white" />
-          </div>
+          <BrandMark className="w-11 h-11 object-contain group-hover:scale-105 transition-transform" />
           <div>
             <div className="flex items-center gap-1.5">
               <span className="font-serif text-xl font-bold text-snavyo-purple tracking-tight">SNAVYO</span>
@@ -70,6 +70,26 @@ export default function Header() {
             <Plus className="w-3.5 h-3.5" />
             <span>New Album</span>
           </Link>
+          {WHATSAPP_URL && (
+            <a
+              href={WHATSAPP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Chat on WhatsApp"
+              className="p-2 rounded-full bg-snavyo-lavender text-snavyo-purple hover:bg-snavyo-purple hover:text-white transition-colors"
+            >
+              <MessageCircle className="w-4 h-4" />
+            </a>
+          )}
+          {PHONE_URL && (
+            <a
+              href={PHONE_URL}
+              aria-label={CONFIG.contact.phone.label}
+              className="p-2 rounded-full bg-snavyo-lavender text-snavyo-purple hover:bg-snavyo-purple hover:text-white transition-colors"
+            >
+              <Phone className="w-4 h-4" />
+            </a>
+          )}
         </nav>
 
         {/* Mobile menu button */}

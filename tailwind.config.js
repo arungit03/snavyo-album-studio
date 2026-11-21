@@ -13,6 +13,18 @@ export default {
           purple: '#7550B8',
           'purple-dark': '#35204F',
           gold: '#D4AF62',
+          'gold-dark': '#8C6D1F',
+          white: '#FFFFFF',
+          'text-main': '#29213A',
+          'text-secondary': '#81768F',
+        },
+        // Brand tokens (single source of truth mirrors src/constants/config.js)
+        brand: {
+          bg: '#F5F0FF',
+          primary: '#7550B8',
+          'primary-dark': '#35204F',
+          gold: '#D4AF62',
+          'gold-dark': '#8C6D1F',
           white: '#FFFFFF',
           'text-main': '#29213A',
           'text-secondary': '#81768F',

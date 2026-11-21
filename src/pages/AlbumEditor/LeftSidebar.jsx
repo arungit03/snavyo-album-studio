@@ -12,12 +12,14 @@ import {
   CheckCircle2,
   FolderOpen,
   Filter,
-  Heart,
-  ImagePlus,
 } from 'lucide-react';
-import WeddingTemplateModal from './WeddingTemplateModal';
-import WeddingGalleryModal from './WeddingGalleryModal';
-import { WEDDING_TEMPLATES } from '@/utils/templateData';
+import { templateFitsAspect } from '@/utils/templateProcessor';
+
+const backgroundImageModules = import.meta.glob('../../assets/templates/*.{png,jpg,jpeg,webp}', { eager: true, query: '?url', import: 'default' });
+const backgroundImages = Object.entries(backgroundImageModules).map(([path, src]) => ({
+  src,
+  name: path.split('/').pop().replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '),
+}));
 
 const TABS = [
   { id: 'photos', label: 'Photos', icon: Image },
@@ -34,19 +36,25 @@ export default function LeftSidebar({
   onAddText,
   onAddDecoration,
   onApplyBackground,
-  onApplyWeddingTemplate,
-  onApplyWeddingGalleryTemplate,
   onApplyLayout,
+  designerTemplates = [],
+  onApplyDesignerTemplate,
   onUploadPhotos,
 }) {
   const [activeTab, setActiveTab] = useState('photos');
   const [photoFilter, setPhotoFilter] = useState('all'); // all | unused | used
-  const [weddingTemplateOpen, setWeddingTemplateOpen] = useState(false);
-  const [weddingGalleryOpen, setWeddingGalleryOpen] = useState(false);
   const fileInputRef = useRef(null);
+  const backgroundInputRef = useRef(null);
 
   const photos = project?.photos || [];
-  const isWeddingProject = project?.event?.id === 'wedding';
+  const handleBackgroundImageUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => onApplyBackground({ image: reader.result, color: '#FFFFFF', background: null });
+    reader.readAsDataURL(file);
+    event.target.value = '';
+  };
 
   // Determine which photos are currently used in the active sheet or whole project
   const usedPhotoIds = new Set();
@@ -203,6 +211,18 @@ export default function LeftSidebar({
         {/* LAYOUTS TAB */}
         {activeTab === 'layouts' && (
           <div className="space-y-4">
+            <div className="rounded-xl border border-snavyo-gold/50 bg-white p-3 space-y-2">
+              <div className="text-xs font-bold text-snavyo-text-main">Designer templates</div>
+              <p className="text-[10px] text-snavyo-text-secondary">Detected photo slots are filled with your uploaded photos.</p>
+              {designerTemplates.filter((template) => template.slots?.length).length ? designerTemplates.filter((template) => template.slots?.length).map((template) => (
+                <div key={template.id} className="rounded-lg border border-snavyo-lavender p-2 hover:border-snavyo-purple/50 transition-colors">
+                  <button type="button" onClick={() => onApplyDesignerTemplate?.(template)} className="w-full flex items-center gap-2 text-left hover:text-snavyo-purple">
+                    <img src={template.imagePath} alt="" className="h-10 w-14 rounded object-cover" />
+                    <span className="min-w-0"><span className="block truncate text-[11px] font-bold">{template.name}</span><span className="text-[9px] text-snavyo-text-secondary">{template.slots.length} photo slots · apply to this sheet</span></span>
+                  </button>
+                </div>
+              )) : <p className="text-[10px] text-snavyo-text-secondary">No detected templates yet. Add images to src/assets/template.</p>}
+            </div>
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider text-snavyo-text-secondary mb-1">
                 Smart Spread Layouts
@@ -282,107 +302,43 @@ export default function LeftSidebar({
         {activeTab === 'backgrounds' && (
           <div className="space-y-4">
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-snavyo-text-secondary mb-1">
-                Wedding Backgrounds
-              </h3>
-              <p className="text-[11px] text-snavyo-text-secondary">
-                Add a designed atmosphere to the active spread. Each treatment stays print-friendly.
-              </p>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-snavyo-text-secondary mb-1">Background images</h3>
+              <p className="text-[11px] text-snavyo-text-secondary">Choose an image from src/assets/templates or upload your own.</p>
             </div>
-
-            <div className="grid grid-cols-2 gap-2.5">
-              {isWeddingProject && (
-                <>
-                  <button type="button" onClick={() => setWeddingTemplateOpen(true)} className="group col-span-2 rounded-xl border border-[#d7b8a6] bg-[#fff4ec] p-2 text-left transition-all hover:border-[#8c5a4c] hover:shadow-sm">
-                    <div className="relative h-24 overflow-hidden rounded-lg border border-[#ead1c2] bg-[#f9e8dc]">
-                      <img src={WEDDING_TEMPLATES.classic.preview} alt="Wed-Day wedding template" className="h-full w-full object-cover" />
-                      <span className="absolute bottom-2 left-2 rounded-full bg-[#4b2b2a]/85 px-2 py-1 text-[9px] font-bold text-white">Personalise template</span>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between px-1">
-                      <span className="text-[10px] font-bold text-[#4b2b2a]">{WEDDING_TEMPLATES.classic.label}</span>
-                      <Heart className="h-3.5 w-3.5 fill-[#8c5a4c] text-[#8c5a4c]" />
-                    </div>
+            <input ref={backgroundInputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleBackgroundImageUpload} className="hidden" aria-label="Upload a background image" />
+            <button type="button" onClick={() => backgroundInputRef.current?.click()} className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-snavyo-purple/40 bg-white p-3 text-xs font-bold text-snavyo-purple hover:bg-snavyo-lavender/40">
+              <Upload className="h-4 w-4" /> Upload background image
+            </button>
+            {backgroundImages.length ? <div className="grid grid-cols-2 gap-2.5">
+              {backgroundImages.map((bg) => {
+                const bgSlug = bg.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+                const matched = designerTemplates.find((t) => {
+                  const idSlug = t.id.toLowerCase().replace(/[^a-z0-9]/g, '');
+                  return idSlug.includes(bgSlug) || bgSlug.includes(idSlug);
+                });
+                return (
+                  <button
+                    key={bg.src}
+                    type="button"
+                    onClick={() => {
+                      if (matched) {
+                        onApplyDesignerTemplate?.(matched);
+                      } else {
+                        onApplyBackground({ image: bg.src, color: '#FFFFFF', background: null });
+                      }
+                    }}
+                    className="group p-2 rounded-xl border border-snavyo-lavender hover:border-snavyo-purple hover:shadow-sm flex flex-col items-center gap-1.5 transition-all text-left relative"
+                  >
+                    <img src={bg.src} alt={bg.name} className="h-20 w-full rounded-lg border border-snavyo-lavender object-cover transition-transform group-hover:scale-[1.02]" />
+                    <span className="line-clamp-1 text-[10px] font-bold text-snavyo-text-main">{bg.name}</span>
+                    {matched?.slots?.length ? (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-snavyo-purple/10 text-snavyo-purple">
+                        {matched.slots.length} photo slots
+                      </span>
+                    ) : null}
                   </button>
-                  <button type="button" onClick={() => setWeddingGalleryOpen(true)} className="group col-span-2 rounded-xl border border-[#c9c3bb] bg-[#f4f2ef] p-2 text-left transition-all hover:border-[#6d675f] hover:shadow-sm">
-                    <div className="relative h-24 overflow-hidden rounded-lg border border-[#d9d4ce] bg-[#e9e6e1]">
-                      <img src={WEDDING_TEMPLATES.gallery.preview} alt="Wedding gallery spread template" className="h-full w-full object-cover" />
-                      <span className="absolute bottom-2 left-2 rounded-full bg-[#37332f]/85 px-2 py-1 text-[9px] font-bold text-white">Auto-fit photo frames</span>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between px-1">
-                      <span className="text-[10px] font-bold text-[#37332f]">{WEDDING_TEMPLATES.gallery.label}</span>
-                      <ImagePlus className="h-3.5 w-3.5 text-[#6d675f]" />
-                    </div>
-                  </button>
-                </>
-              )}
-              {[
-                {
-                  name: 'Petal Veil',
-                  color: '#FFF9F7',
-                  border: '#F1CFC8',
-                  background: 'radial-gradient(circle at 12% 20%, rgba(234, 159, 166, .28) 0 7%, transparent 8%), radial-gradient(circle at 82% 75%, rgba(248, 205, 178, .3) 0 9%, transparent 10%), linear-gradient(135deg, #fffaf8 0%, #fdf0ef 52%, #fff9f4 100%)',
-                },
-                {
-                  name: 'Champagne Silk',
-                  color: '#F7F0DF',
-                  border: '#DEC797',
-                  background: 'repeating-linear-gradient(112deg, rgba(255,255,255,.34) 0 2px, transparent 2px 16px), linear-gradient(135deg, #fff9eb 0%, #ead8ae 48%, #fff8e8 100%)',
-                },
-                {
-                  name: 'Pressed Florals',
-                  color: '#F8F5FF',
-                  border: '#DCCBFA',
-                  background: 'radial-gradient(ellipse at 18% 28%, rgba(168, 128, 206, .3) 0 4%, transparent 5%), radial-gradient(ellipse at 78% 68%, rgba(211, 145, 174, .28) 0 5%, transparent 6%), linear-gradient(145deg, #fffaff, #f0e8fb 58%, #fff8f5)',
-                },
-                {
-                  name: 'Rosewater Blush',
-                  color: '#FCEDEF',
-                  border: '#F2C0CB',
-                  background: 'radial-gradient(circle at 85% 15%, rgba(255,255,255,.72), transparent 28%), linear-gradient(150deg, #fff8f7 0%, #f9d9df 50%, #f5e8ef 100%)',
-                },
-                {
-                  name: 'Garden Sage',
-                  color: '#EEF5F0',
-                  border: '#BFD8C7',
-                  background: 'radial-gradient(circle at 20% 80%, rgba(105, 147, 121, .18) 0 10%, transparent 11%), linear-gradient(125deg, #f9fcf7 0%, #dcebe0 50%, #eef5ed 100%)',
-                },
-                {
-                  name: 'Pearl Glow',
-                  color: '#F6F5F0',
-                  border: '#D7D2C2',
-                  background: 'radial-gradient(circle at 50% -10%, rgba(255,255,255,.95), transparent 45%), linear-gradient(120deg, #eeeae2 0%, #fffdf8 48%, #e8e5ee 100%)',
-                },
-                {
-                  name: 'Velvet Plum',
-                  color: '#301941',
-                  border: '#5E3B71',
-                  background: 'radial-gradient(circle at 20% 15%, rgba(210, 155, 204, .22), transparent 30%), linear-gradient(135deg, #1d102d 0%, #422052 55%, #24122f 100%)',
-                  dark: true,
-                },
-                {
-                  name: 'Midnight Blue Hour',
-                  color: '#151C35',
-                  border: '#39466E',
-                  background: 'radial-gradient(circle at 78% 20%, rgba(220, 196, 146, .25) 0 2px, transparent 3px), radial-gradient(circle at 24% 68%, rgba(255,255,255,.12) 0 1px, transparent 2px), linear-gradient(145deg, #111629 0%, #263557 58%, #14172c 100%)',
-                  dark: true,
-                },
-              ].map((bg) => (
-                <button
-                  key={bg.name}
-                  type="button"
-                  onClick={() => onApplyBackground(bg)}
-                  className="group p-2 rounded-xl border border-snavyo-lavender hover:border-snavyo-purple hover:shadow-sm flex flex-col items-center gap-1.5 transition-all text-left"
-                >
-                  <div
-                    className="w-full h-12 rounded-lg shadow-inner border transition-transform group-hover:scale-[1.02]"
-                    style={{ background: bg.background, borderColor: bg.border }}
-                  />
-                  <span className={`text-[10px] font-bold ${bg.dark ? 'text-snavyo-text-main' : 'text-snavyo-text-main'}`}>
-                    {bg.name}
-                  </span>
-                </button>
-              ))}
-            </div>
+                );
+              })}</div> : <p className="rounded-xl border border-snavyo-lavender bg-white p-3 text-[10px] text-snavyo-text-secondary">Add images to src/assets/templates to show them here.</p>}
           </div>
         )}
 
@@ -465,16 +421,6 @@ export default function LeftSidebar({
         )}
       </div>
 
-      <WeddingTemplateModal
-        isOpen={weddingTemplateOpen}
-        onClose={() => setWeddingTemplateOpen(false)}
-        onApply={onApplyWeddingTemplate}
-      />
-      <WeddingGalleryModal
-        isOpen={weddingGalleryOpen}
-        onClose={() => setWeddingGalleryOpen(false)}
-        onApply={onApplyWeddingGalleryTemplate}
-      />
     </aside>
   );
 }
