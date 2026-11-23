@@ -13,6 +13,10 @@ dist-ssr
 public/template-generated
 *.local
 
+# Environment variables (contains secrets - do not commit)
+.env
+.env.*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -17,6 +17,10 @@ export function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+export function sheetsWithPlacedPhotos(sheets = []) {
+  return sheets.filter((sheet) => (sheet?.layers || []).some((layer) => layer.type === 'photo' && (layer.previewUrl || layer.photoId)));
+}
+
 // Load image asynchronously
 function loadImage(src) {
   return new Promise((resolve, reject) => {
@@ -393,7 +397,7 @@ export const ExportService = {
     const albumSize = project?.albumSize || { spreadWidth: 36, height: 12 };
     const spreadW = albumSize.spreadWidth || 36;
     const spreadH = albumSize.height || 12;
-    const sheets = project?.sheets || [];
+    const sheets = sheetsWithPlacedPhotos(project?.sheets || []);
     const total = sheets.length;
 
     if (total === 0) return false;
@@ -406,7 +410,7 @@ export const ExportService = {
 
     for (let i = 0; i < total; i++) {
       if (onProgress) {
-        onProgress({ current: i + 1, total, message: `Rendering Sheet ${i + 1} of ${total}...` });
+        onProgress({ current: i + 1, total, message: `Rendering Sheet ${sheets[i].sheetNumber || i + 1} (${i + 1} of ${total})...` });
       }
 
       const canvas = await this.renderSheetToCanvas(sheets[i], albumSize, targetPpi);

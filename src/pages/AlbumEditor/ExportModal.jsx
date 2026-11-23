@@ -12,7 +12,7 @@ import {
   Layers,
   Settings2,
 } from 'lucide-react';
-import { ExportService } from '@/services/exportService';
+import { ExportService, sheetsWithPlacedPhotos } from '@/services/exportService';
 import { PPI } from '@/utils/albumData';
 
 export default function ExportModal({
@@ -30,6 +30,7 @@ export default function ExportModal({
   const activeSheet = project?.sheets?.[activeSheetIndex] || { sheetNumber: 1 };
   const albumSize = project?.albumSize || { spreadWidth: 36, height: 12, inches: '12 × 36' };
   const totalSheets = project?.sheets?.length || 1;
+  const photoSheetsCount = sheetsWithPlacedPhotos(project?.sheets || []).length;
 
   useEffect(() => {
     if (isOpen && project) {
@@ -90,7 +91,7 @@ export default function ExportModal({
   const handleExportAlbumPDF = async () => {
     setIsExporting(true);
     try {
-      const filename = `${baseFilename}_Complete_Album_${totalSheets}Sheets.pdf`;
+      const filename = `${baseFilename}_Photo_Sheets_${photoSheetsCount}.pdf`;
       await ExportService.exportCompleteAlbumPDF(project, filename, targetPpi === 300 ? 200 : targetPpi, setProgress);
     } catch (err) {
       console.error('Complete Album PDF Export failed:', err);
@@ -292,7 +293,7 @@ export default function ExportModal({
           {tab === 'album' && (
             <div className="space-y-4">
               <div className="p-3 bg-snavyo-lavender/40 border border-snavyo-lavender rounded-xl text-xs text-snavyo-text-secondary">
-                Export all <strong>{totalSheets} spreads</strong> into a single delivery package.
+                The complete album has <strong>{totalSheets} spreads</strong>. The PDF includes <strong>{photoSheetsCount} sheets with placed photos</strong>.
                 Progress will be displayed below.
               </div>
 
@@ -301,7 +302,7 @@ export default function ExportModal({
                 <button
                   type="button"
                   onClick={handleExportAlbumPDF}
-                  disabled={isExporting}
+                  disabled={isExporting || photoSheetsCount === 0}
                   className="w-full p-3.5 rounded-xl border border-snavyo-lavender bg-white hover:border-snavyo-purple hover:shadow-sm text-left flex items-center justify-between transition-all group disabled:opacity-50"
                 >
                   <div className="flex items-center gap-3">
@@ -310,10 +311,10 @@ export default function ExportModal({
                     </div>
                     <div>
                       <h4 className="text-xs font-bold text-snavyo-text-main">
-                        Complete Album PDF (All {totalSheets} Spreads)
+                        PDF Export ({photoSheetsCount} sheets with photos)
                       </h4>
                       <p className="text-[10px] text-snavyo-text-secondary">
-                        Single multi-page PDF document ready for print bookbinders
+                        Exports only sheets with placed photos. Blank sheets are skipped.
                       </p>
                     </div>
                   </div>
