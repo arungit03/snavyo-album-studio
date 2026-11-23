@@ -44,8 +44,8 @@ export default function Filmstrip({
               onClick={() => onSelectSheet(index)}
               className={`w-44 flex-shrink-0 flex flex-col gap-1.5 p-1.5 rounded-xl border transition-all cursor-pointer group relative ${
                 isActive
-                  ? 'bg-snavyo-lavender/70 border-snavyo-purple shadow-[0_4px_12px_rgba(117,80,184,0.16)]'
-                  : 'bg-white/70 border-snavyo-lavender/70 hover:border-snavyo-purple/40 hover:bg-white hover:shadow-sm'
+                  ? 'bg-gradient-to-b from-purple-50 to-white border-snavyo-purple shadow-[0_4px_16px_rgba(117,80,184,0.2),_0_0_0_1.5px_rgba(212,175,98,0.5)] ring-1 ring-amber-400/40'
+                  : 'bg-white/80 border-snavyo-lavender/80 hover:border-snavyo-purple/50 hover:bg-white hover:shadow-xs'
               }`}
             >
               {/* Miniature Spread Canvas Preview */}

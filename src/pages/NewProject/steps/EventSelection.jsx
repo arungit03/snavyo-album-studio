@@ -110,10 +110,10 @@ export default function EventSelection({ events, onSelect, selected }) {
               key={ev.id}
               type="button"
               onClick={() => onSelect(ev)}
-              className={`flex flex-col items-start p-4 rounded-premium-xl border transition-all duration-200 text-left cursor-pointer group relative ${
+              className={`flex flex-col items-start p-4 rounded-2xl border transition-all duration-300 text-left cursor-pointer group relative ${
                 isSelected
-                  ? 'bg-white border-snavyo-purple shadow-gold ring-2 ring-snavyo-purple'
-                  : 'bg-white border-snavyo-lavender/70 hover:border-snavyo-purple/50 hover:shadow-luxury hover:-translate-y-0.5'
+                  ? 'bg-gradient-to-b from-purple-50/70 to-white border-2 border-snavyo-purple shadow-[0_8px_25px_rgba(117,80,184,0.2),_0_0_0_1.5px_rgba(212,175,98,0.6)] ring-1 ring-amber-400'
+                  : 'bg-white border-snavyo-lavender/80 hover:border-amber-400/60 hover:shadow-luxury hover:-translate-y-0.5'
               }`}
             >
               <div className="flex items-center justify-between w-full mb-3">

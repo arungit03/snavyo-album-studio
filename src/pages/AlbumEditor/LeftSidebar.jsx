@@ -93,8 +93,8 @@ export default function LeftSidebar({
               onClick={() => setActiveTab(tab.id)}
               className={`flex-1 flex flex-col items-center py-2 px-1 rounded-xl text-[10px] font-bold transition-all ${
                 isActive
-                  ? 'bg-white text-snavyo-purple shadow-sm border border-snavyo-lavender'
-                  : 'text-snavyo-text-secondary hover:text-snavyo-purple'
+                  ? 'bg-white text-snavyo-purple shadow-[0_2px_8px_rgba(117,80,184,0.12)] border border-snavyo-lavender/90'
+                  : 'text-snavyo-text-secondary hover:text-snavyo-purple hover:bg-white/60'
               }`}
             >
               <Icon className="w-4 h-4 mb-0.5" />
@@ -211,17 +211,32 @@ export default function LeftSidebar({
         {/* LAYOUTS TAB */}
         {activeTab === 'layouts' && (
           <div className="space-y-4">
-            <div className="rounded-xl border border-snavyo-gold/50 bg-white p-3 space-y-2">
-              <div className="text-xs font-bold text-snavyo-text-main">Designer templates</div>
-              <p className="text-[10px] text-snavyo-text-secondary">Detected photo slots are filled with your uploaded photos.</p>
-              {designerTemplates.filter((template) => template.slots?.length).length ? designerTemplates.filter((template) => template.slots?.length).map((template) => (
-                <div key={template.id} className="rounded-lg border border-snavyo-lavender p-2 hover:border-snavyo-purple/50 transition-colors">
-                  <button type="button" onClick={() => onApplyDesignerTemplate?.(template)} className="w-full flex items-center gap-2 text-left hover:text-snavyo-purple">
-                    <img src={template.imagePath} alt="" className="h-10 w-14 rounded object-cover" />
-                    <span className="min-w-0"><span className="block truncate text-[11px] font-bold">{template.name}</span><span className="text-[9px] text-snavyo-text-secondary">{template.slots.length} photo slots · apply to this sheet</span></span>
-                  </button>
-                </div>
-              )) : <p className="text-[10px] text-snavyo-text-secondary">No detected templates yet. Add images to src/assets/template.</p>}
+            <div className="rounded-2xl border border-amber-300/70 bg-gradient-to-b from-amber-50/50 via-white to-purple-50/30 p-3.5 space-y-2.5 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="badge-gold">
+                  <Sparkles className="w-2.5 h-2.5" />
+                  Designer Templates
+                </span>
+                <span className="text-[10px] font-bold text-amber-800">
+                  {designerTemplates.length} Available
+                </span>
+              </div>
+              <p className="text-[10px] text-snavyo-text-secondary leading-tight">
+                Click any template to apply its custom background and smart photo slots to this sheet.
+              </p>
+              <div className="space-y-1.5 max-h-64 overflow-y-auto pr-0.5 scrollbar-thin">
+                {designerTemplates.filter((template) => template.slots?.length).length ? designerTemplates.filter((template) => template.slots?.length).map((template) => (
+                  <div key={template.id} className="rounded-xl border border-snavyo-lavender/80 bg-white/90 p-2 hover:border-amber-400 hover:shadow-xs transition-all group">
+                    <button type="button" onClick={() => onApplyDesignerTemplate?.(template)} className="w-full flex items-center gap-2.5 text-left">
+                      <img src={template.imagePath} alt="" className="h-10 w-16 rounded-md object-cover border border-snavyo-lavender/60 group-hover:scale-103 transition-transform" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[11px] font-bold text-snavyo-text-main group-hover:text-snavyo-purple">{template.name}</span>
+                        <span className="text-[9px] font-medium text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200/50">{template.slots.length} photo slots</span>
+                      </span>
+                    </button>
+                  </div>
+                )) : <p className="text-[10px] text-snavyo-text-secondary">No detected templates yet.</p>}
+              </div>
             </div>
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider text-snavyo-text-secondary mb-1">

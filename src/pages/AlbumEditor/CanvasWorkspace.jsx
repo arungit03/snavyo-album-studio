@@ -311,7 +311,7 @@ export default function CanvasWorkspace({
           backgroundPosition: activeSheet.background?.image ? 'center' : undefined,
           backgroundRepeat: 'no-repeat',
           boxShadow:
-            '0 25px 60px -15px rgba(45, 20, 80, 0.25), 0 0 0 1px rgba(117, 80, 184, 0.15)',
+            '0 25px 70px -15px rgba(35, 10, 65, 0.3), 0 0 0 1px rgba(117, 80, 184, 0.2), 0 8px 20px -4px rgba(212, 175, 98, 0.15)',
         }}
         onClick={(e) => {
           e.stopPropagation();
@@ -483,22 +483,22 @@ export default function CanvasWorkspace({
                   />
                 ) : (
                   layer.templateSlotId ? (
-                    <div className="relative flex h-full w-full flex-col items-center justify-center gap-2 bg-[#08080c]/95 p-3 text-center text-white border border-white/10 hover:border-snavyo-gold/70 rounded transition-all">
+                    <div className="relative flex h-full w-full flex-col items-center justify-center gap-2.5 bg-[#0b0a12]/92 backdrop-blur-md p-4 text-center text-white border border-amber-300/30 hover:border-amber-400/80 rounded-lg transition-all duration-300 shadow-2xl">
                       {/* Orientation Recommendation Badge */}
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-[10px] font-semibold text-amber-200 shadow-sm">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/50 backdrop-blur-md border border-amber-300/40 text-[10px] font-bold text-amber-200 shadow-sm">
                         {layer.templateOrientation === 'landscape' ? (
                           <>
-                            <span className="inline-block w-3.5 h-2.5 border border-amber-300 rounded-[1px] bg-amber-400/30" />
+                            <span className="inline-block w-3.5 h-2.5 border border-amber-300 rounded-[2px] bg-amber-400/40" />
                             <span>Recommended: Horizontal image for best fit</span>
                           </>
                         ) : layer.templateOrientation === 'portrait' ? (
                           <>
-                            <span className="inline-block w-2.5 h-3.5 border border-amber-300 rounded-[1px] bg-amber-400/30" />
+                            <span className="inline-block w-2.5 h-3.5 border border-amber-300 rounded-[2px] bg-amber-400/40" />
                             <span>Recommended: Vertical image for best fit</span>
                           </>
                         ) : (
                           <>
-                            <span className="inline-block w-3 h-3 border border-amber-300 rounded-[1px] bg-amber-400/30" />
+                            <span className="inline-block w-3 h-3 border border-amber-300 rounded-[2px] bg-amber-400/40" />
                             <span>Recommended: Square image for best fit</span>
                           </>
                         )}
@@ -506,11 +506,11 @@ export default function CanvasWorkspace({
 
                       {/* Add Image Button */}
                       <label
-                        className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-gradient-to-r from-snavyo-purple to-purple-700 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-purple-950/40 hover:from-purple-600 hover:to-snavyo-purple hover:scale-105 active:scale-95 transition-all"
+                        className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-gradient-to-r from-amber-400 via-amber-300 to-amber-500 px-5 py-2.5 text-xs font-extrabold text-purple-950 shadow-[0_4px_20px_rgba(212,175,98,0.45)] hover:shadow-[0_6px_25px_rgba(212,175,98,0.65)] hover:scale-105 active:scale-95 transition-all duration-200"
                         onMouseDown={(event) => event.stopPropagation()}
                         onClick={(event) => event.stopPropagation()}
                       >
-                        <ImagePlus className="h-4 w-4" /> Add image
+                        <ImagePlus className="h-4 w-4 text-purple-950" /> Add image
                         <input
                           type="file"
                           accept="image/*"
@@ -527,17 +527,17 @@ export default function CanvasWorkspace({
                       {/* Pick from already uploaded project photos */}
                       {project?.photos?.length > 0 && (
                         <div
-                          className="mt-1 flex flex-wrap items-center justify-center gap-1 max-w-[90%]"
+                          className="mt-1 flex flex-wrap items-center justify-center gap-1.5 max-w-[90%]"
                           onMouseDown={(e) => e.stopPropagation()}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <span className="text-[9px] text-white/50 block w-full">or choose uploaded photo:</span>
+                          <span className="text-[9px] font-medium text-white/60 block w-full">or choose uploaded photo:</span>
                           {project.photos.slice(0, 5).map((p) => (
                             <button
                               key={p.id}
                               type="button"
                               onClick={() => onSelectPhotoForSlot?.(layer.id, p)}
-                              className="h-7 w-7 rounded overflow-hidden border border-white/25 hover:border-snavyo-gold hover:scale-110 transition-transform"
+                              className="h-8 w-8 rounded-md overflow-hidden border border-white/30 hover:border-amber-400 hover:scale-110 shadow-sm transition-transform"
                               title={`Place ${p.name}`}
                             >
                               <img src={p.previewUrl} alt="" className="w-full h-full object-cover" />

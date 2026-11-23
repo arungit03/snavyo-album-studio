@@ -49,6 +49,8 @@ export default {
         },
       },
       boxShadow: {
+        xs: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+        '2xs': '0 1px 1px 0 rgba(0, 0, 0, 0.03)',
         luxury: '0 12px 40px -12px rgba(117, 80, 184, 0.16)',
         gold: '0 0 24px rgba(212, 175, 98, 0.30)',
       },
